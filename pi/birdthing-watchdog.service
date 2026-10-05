@@ -1,0 +1,6 @@
+[Unit]
+Description=BirdThing pipeline self-repair (restart audio chain if loopback goes silent)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/birdthing/pipeline_watchdog.sh

@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "ha_url": "http://YOUR_HOME_ASSISTANT_IP:8123",
+  "ha_token": "PASTE_LONG_LIVED_ACCESS_TOKEN_HERE",
+  "entities": ["switch.living_room"],
+  "day_entities": ["media_player.living_room_tv"],
+  "after_sunset": true,
+  "pre_sunset_min": 30,
+  "sensitivity": 7,
+  "boost": 1.5,
+  "dbl_max": 0.6,
+  "cooldown": 1.2,
+  "_comment": "Copy to /opt/birdthing/clap.json (NEVER commit the real token). A double clap calls <domain>.toggle on every entity in the list that applies right now (switch.*, light.*, media_player.* or remote.*). For an Apple TV use its media_player.* entity: media_player.toggle powers it on and off reliably. (The remote.* entity turns it OFF but cannot wake it again. And note that on Home Assistant older than 2025.12, Apple TV power control does not work at all -- pyatv's Companion protocol fails against current tvOS, logged as 'Could not fetch SystemStatus, power_state will not work'.) TIME OF DAY PICKS THE LIST: `entities` is used inside the evening window [sunset - pre_sunset_min, sunrise], `day_entities` from sunrise until that window opens -- so claps can run the lights at night and the TV in the morning. Leave `day_entities` out and behaviour is the classic single list, which `after_sunset` then gates to the evening window only (claps do nothing by day). sensitivity 1-10 = how easily a clap triggers; boost 1-8 = gain for a quiet/far mic; dbl_max = max seconds between the two claps; cooldown = quiet seconds after a toggle. All of these are editable live from the dashboard Clap page (Settings -> Clap control)."
+}

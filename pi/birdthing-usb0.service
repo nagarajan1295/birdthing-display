@@ -1,0 +1,13 @@
+[Unit]
+Description=BirdThing keep usb0 IP (192.168.7.1) present
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/birdthing/usb0-keepip.sh
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

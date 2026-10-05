@@ -1,0 +1,14 @@
+[Unit]
+Description=BirdThing Pi receiver (Car Thing mic TCP -> ALSA loopback)
+After=network.target sound.target
+
+[Service]
+Type=simple
+ExecStartPre=-/bin/sh -c 'ip link set usb0 up; ip -4 addr show usb0 | grep -q 192.168.7 || ip addr add 192.168.7.1/24 dev usb0'
+ExecStart=/home/birdpi/BirdNET-Pi/birdnet/bin/python3 /opt/birdthing/birdthing_recv.py
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+[Unit]
+Description=Periodic ANCS adapter re-assert
+
+# ancs-prep.service runs once at boot (RemainAfterExit), which is not enough:
+# on this BlueZ build the controller has been seen to drop back to dual mode
+# (BR/EDR on) hours after a clean boot, and iOS then grabs the classic link so
+# ANCS never attaches. This re-runs the (idempotent, ~0.3s) prep every 10 min
+# so a silent regression self-heals within 10 minutes instead of never.
+[Timer]
+OnBootSec=3min
+OnCalendar=*:0/10
+Persistent=false
+
+[Install]
+WantedBy=timers.target

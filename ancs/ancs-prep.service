@@ -1,0 +1,15 @@
+[Unit]
+Description=Prepare the Bluetooth adapter for the ANCS gateway
+After=bluetooth.service
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/ancs/ancs-prep.sh
+# the script waits up to 30s for hci0 to appear and then power-cycles the
+# controller, which is slow on the Mac mini's USB Broadcom radio
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=BirdThing - wake the Car Thing display every morning
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/birdthing/wake_display.sh

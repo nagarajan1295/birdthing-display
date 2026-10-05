@@ -1,0 +1,20 @@
+#!/bin/sh
+# Block a commit that would publish the author's real home location.
+# Install:  cp tools/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#
+# Pick an interpreter that actually RUNS -- on Windows, `command -v python3`
+# happily resolves to the Microsoft Store alias stub, which then refuses to
+# execute anything. So probe each candidate instead of trusting the lookup.
+PY=""
+for c in python3 python py; do
+    if command -v "$c" >/dev/null 2>&1 && "$c" -c "" >/dev/null 2>&1; then
+        PY="$c"; break
+    fi
+done
+[ -z "$PY" ] && { echo "pre-commit: no working python found, skipping location scrub check"; exit 0; }
+
+"$PY" tools/check_location_scrub.py || {
+    echo ""
+    echo "commit aborted — fix the leak above first."
+    exit 1
+}

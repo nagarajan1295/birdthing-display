@@ -1,0 +1,15 @@
+[Unit]
+Description=BirdThing Car Thing PDM mic -> Pi (TCP push)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/birdthing/birdmic_ct.py
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

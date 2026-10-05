@@ -1,0 +1,18 @@
+[Unit]
+Description=ANCS gateway - iPhone notifications from BLE to the house displays
+After=ancs-prep.service bluetooth.service network-online.target
+Requires=ancs-prep.service
+
+[Service]
+Type=simple
+# -u: unbuffered, so the log lines reach journald as they happen rather than
+# sitting in a pipe buffer while you are trying to watch a pairing attempt
+ExecStart=/usr/bin/python3 -u /opt/ancs/ancs_gateway.py
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

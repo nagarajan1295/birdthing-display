@@ -1,0 +1,7 @@
+[Unit]
+Description=Re-assert Bluetooth adapter state for ANCS (periodic)
+After=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ancs/ancs-prep.sh

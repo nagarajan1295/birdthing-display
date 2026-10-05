@@ -1,0 +1,8 @@
+[Unit]
+Description=BirdThing nightly analytics report
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=birdpi
+ExecStart=/usr/bin/python3 /opt/birdthing/analytics.py

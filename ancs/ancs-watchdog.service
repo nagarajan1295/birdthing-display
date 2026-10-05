@@ -1,0 +1,7 @@
+[Unit]
+Description=ANCS gateway watchdog (escalating self-repair + health record)
+After=ancs-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/ancs/ancs-watchdog.sh

@@ -1,0 +1,984 @@
+<!-- ===== iPhone notification display (ANCS) ==================================
+     Self-contained. Patch-time globals set the DEFAULTS:
+
+       window.ANCS_URL    endpoint to poll (gateway, or a same-origin proxy)
+       window.ANCS_FS     CSS length for the base font size. Everything else is
+                          in em, so pass the host page's OWN scale here and the
+                          notification tracks that screen's typography:
+                            BirdThing     calc(21px * var(--ts,1))
+                            WeatherThing  calc(30px * var(--uiscale,1))
+                            kiosk         clamp(1.3rem, 2vw, 1.9rem)
+       window.ANCS_STYLE  'toast' | 'full'   default layout
+       window.ANCS_THEME  'light' for light pages with no body.light
+       window.ANCS_STATUS_SLOT    CSS selector of a status row to put the
+                                  phone-link glyph inside (BirdThing: '.top .tr')
+       window.ANCS_STATUS_ANCHOR  CSS selector of an existing status icon to
+                                  sit just LEFT of, so they never overlap
+                                  (WeatherThing: '#btStatus')
+       window.ANCS_STATUS         'tr'|'tl'|'br'|'bl'|'off' corner fallback
+
+     NOTIFICATION CENTRE: tap the phone glyph, or swipe down from the top-right
+     corner, for an iOS-style list of everything still on the phone (feed items
+     with no removed_ts). Swipe up / tap the backdrop to close. Gesture
+     listeners are on `document` and only fire on a real vertical drag, so the
+     host's own top-bar taps (clock etc.) still work.
+
+     ---- CHECKLIST for any change here (do ALL before saying it's fixed) ------
+       [ ] UI:      glyph + toast + notification centre on ALL THREE displays,
+                    at every text size, no overlap with the clock / wifi /
+                    bluetooth / chips, no horizontal page scroll, light AND dark.
+       [ ] FUNCTION: a notification that arrives while the screen is up toasts
+                    once; one that arrives during a reload still toasts; one
+                    the user reads on their PHONE a second later (removed_ts
+                    set almost immediately) STILL toasts - removed_ts only
+                    drops the badge, it must never gate the toast.
+                    Test with a real removed_ts item, not just /api/test.
+       [ ] STABILITY: survives a reload / kiosk-watchdog relaunch / reboot
+                    (localStorage: ancsOn, ancsSeenV1). No burst on cold start.
+       [ ] SYNC:    same notify_widget.html injected on all three; repo pushed;
+                    gateway + proxies agree.
+       [ ] VERIFY:  reload each display and read its LIVE DOM / screenshot -
+                    never trust a deploy without looking.
+     -------------------------------------------------------------------------
+
+     The user then overrides size / fullscreen / duration / on-off from the
+     host page's own Settings screen - this script INJECTS those rows into
+     #settings .vbody at runtime rather than editing the dashboards, so both
+     Car Things get the identical panel and stay consistent. Choices live in
+     localStorage and apply immediately.
+
+     PERFORMANCE: no backdrop-filter, no infinite animations, opacity-only
+     transitions. The Car Things composite in software on an Amlogic GPU while
+     their own UI repaints constantly (the WeatherThing redraws an analog clock
+     every 200ms) - blur layers and looping transforms made this visibly glitch.
+     Canonical source: E:\BirdThing\ancs\notify_widget.html
+============================================================================ -->
+<style>
+  #ancsWrap{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;
+    flex-direction:column;align-items:center;gap:.5em;padding:.6em;
+    pointer-events:none;}
+  #ancsWrap.full{top:0;bottom:0;padding:0;gap:0;}
+
+  .ancs{pointer-events:auto;box-sizing:border-box;
+    font-family:'Inter',-apple-system,system-ui,"Helvetica Neue",sans-serif;
+    font-size:var(--ancs-fs,21px);
+    background:#1c1c1e;color:#f5f5f7;
+    border:1px solid rgba(255,255,255,.16);
+    opacity:0;transition:opacity .32s ease;}
+  .ancs.in{opacity:1;}
+  body.light .ancs,.ancs.light{background:#fff;color:#1c1c1e;
+    border-color:rgba(0,0,0,.12);}
+
+  /* ---- toast layout ---- */
+  .ancs.toast{width:100%;max-width:44em;display:flex;align-items:center;
+    gap:.8em;padding:.7em .95em;border-radius:.95em;
+    box-shadow:0 .5em 1.6em rgba(0,0,0,.5);}
+  .ancs.toast .ancs-ico{flex:0 0 auto;width:2.3em;height:2.3em;
+    border-radius:.62em;display:flex;align-items:center;justify-content:center;
+    font-size:1.15em;background:rgba(255,255,255,.14);}
+  body.light .ancs.toast .ancs-ico,.ancs.toast.light .ancs-ico{
+    background:rgba(0,0,0,.07);}
+  .ancs.toast .ancs-body{flex:1 1 auto;min-width:0;}
+  .ancs.toast .ancs-app{font-size:.62em;font-weight:600;letter-spacing:.09em;
+    text-transform:uppercase;opacity:.62;margin-bottom:.15em;}
+  .ancs.toast .ancs-title{font-size:1.12em;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
+  .ancs.toast .ancs-msg{font-size:.95em;opacity:.8;line-height:1.3;
+    margin-top:.12em;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  .ancs.toast.call{border-color:rgba(48,209,88,.6);}
+  .ancs.toast.call .ancs-ico{background:rgba(48,209,88,.22);color:#30d158;}
+
+  /* ---- fullscreen layout ---- */
+  .ancs.full{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;
+    border:0;border-radius:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:1em 1.2em;gap:.35em;
+    transition:opacity .9s ease;}   /* fade-out slower than fade-in */
+  .ancs.full.in{transition:opacity .3s ease;}
+  .ancs.full .ancs-ico{font-size:2.3em;line-height:1;margin-bottom:.15em;}
+  .ancs.full .ancs-app{font-size:.62em;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.6;}
+  .ancs.full .ancs-title{font-size:1.55em;font-weight:700;line-height:1.12;
+    max-width:96%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ancs.full .ancs-msg{font-size:.98em;opacity:.85;line-height:1.28;
+    max-width:94%;display:-webkit-box;-webkit-line-clamp:3;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  .ancs.full.call{background:#06240f;color:#eafff0;}
+  .ancs.full.call .ancs-app{color:#30d158;opacity:1;}
+  body.light .ancs.full.call,.ancs.full.call.light{background:#e8fbee;
+    color:#042c12;}
+
+  /* selected state for the injected settings buttons */
+  #settings .ancs-sel{background:var(--accent,#0a84ff)!important;
+    color:#fff!important;border-color:transparent!important;}
+
+  @media (prefers-reduced-motion:reduce){.ancs{transition:opacity .15s;}}
+
+  /* ---- persistent phone-link status glyph (top-right, like wifi/bluetooth) ---- */
+  #ancsStat{--s:1;pointer-events:none;display:inline-flex;align-items:center;
+    justify-content:center;position:relative;width:calc(1.15em*var(--s));
+    height:calc(1.15em*var(--s));flex:0 0 auto;color:currentColor;opacity:.32;
+    transition:opacity .4s ease;vertical-align:middle;}
+  #ancsStat.linked{opacity:.9;}
+  #ancsStat svg{width:100%;height:100%;display:block;}
+  #ancsStat .slash{opacity:1;transition:opacity .4s ease;}
+  #ancsStat.linked .slash{opacity:0;}
+  #ancsStat .badge{position:absolute;top:-.15em;right:-.2em;min-width:.95em;
+    height:.95em;padding:0 .16em;box-sizing:border-box;border-radius:.55em;
+    background:#ff3b30;color:#fff;font:600 .62em/.95em 'Inter',system-ui,sans-serif;
+    text-align:center;display:none;}
+  #ancsStat.has-badge .badge{display:block;}
+  /* fixed-corner fallback: no host status row to inherit a colour from, and
+     the page may be light OR dark - mid-grey at half opacity reads on both */
+  #ancsStat.fixed{position:fixed;z-index:180;width:22px;height:22px;
+    font-size:16px;color:#8a8a8e!important;opacity:.5;}
+  #ancsStat.fixed.linked{opacity:.95;}
+  #ancsStat.fixed.tr{top:6px;right:8px;}
+  #ancsStat.fixed.tl{top:6px;left:8px;}
+  #ancsStat.fixed.br{bottom:6px;right:8px;}
+  #ancsStat.fixed.bl{bottom:6px;left:8px;}
+  /* .anchored: JS pins top/right next to an existing status icon (e.g. the
+     WeatherThing's #btStatus) so the two never overlap */
+  #ancsStat.fixed.anchored{top:0;right:0;}
+  @keyframes ancsPing{0%{transform:scale(1);}35%{transform:scale(1.35);}100%{transform:scale(1);}}
+  #ancsStat.ping{animation:ancsPing .7s ease;}
+  #ancsStat.tappable{pointer-events:auto;cursor:pointer;}
+
+  /* ---- notification centre: swipe down from the top-right, or tap the glyph ---- */
+  #ancsCtrBack{position:fixed;inset:0;z-index:205;background:rgba(0,0,0,.45);
+    opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  #ancsCtrBack.open{opacity:1;pointer-events:auto;}
+  #ancsCtr{position:fixed;top:0;left:0;right:0;z-index:210;
+    max-height:88%;display:flex;flex-direction:column;
+    transform:translateY(-102%);transition:transform .28s cubic-bezier(.3,.9,.3,1);
+    font-family:'Inter',-apple-system,system-ui,sans-serif;
+    background:#111113;color:#f5f5f7;
+    border-bottom:1px solid rgba(255,255,255,.12);
+    box-shadow:0 1.2em 3em rgba(0,0,0,.55);}
+  #ancsCtr.open{transform:translateY(0);}
+  body.light #ancsCtr,#ancsCtr.light{background:#f4f4f6;color:#1c1c1e;
+    border-bottom-color:rgba(0,0,0,.12);}
+  #ancsCtr .ctr-head{flex:0 0 auto;display:flex;align-items:baseline;
+    justify-content:space-between;padding:calc(14px*var(--s,1)) calc(20px*var(--s,1)) calc(8px*var(--s,1));}
+  #ancsCtr .ctr-title{font-size:calc(15px*var(--s,1));font-weight:700;
+    letter-spacing:.03em;text-transform:uppercase;opacity:.7;}
+  #ancsCtr .ctr-hint{font-size:calc(12px*var(--s,1));opacity:.4;}
+  #ancsCtr .ctr-list{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:0 calc(12px*var(--s,1)) calc(14px*var(--s,1));display:flex;
+    flex-direction:column;gap:calc(8px*var(--s,1));}
+  #ancsCtr .ctr-swipe{position:relative;overflow:hidden;border-radius:calc(14px*var(--s,1));
+    /* flex-shrink:0 is required, not cosmetic: .ctr-list is a column flex
+       container, and an overflow:hidden flex item's automatic minimum size
+       is 0 (spec quirk - overflow:visible items instead default to their
+       content size as the minimum) - without this every row got squashed
+       down to a fraction of its content height, clipping the message text. */
+    flex:0 0 auto;}
+  #ancsCtr .ctr-swipe-bg{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:flex-end;padding-right:calc(18px*var(--s,1));background:#ff3b30;
+    color:#fff;font-size:calc(13px*var(--s,1));font-weight:600;}
+  #ancsCtr .ctr-row{display:flex;gap:calc(11px*var(--s,1));align-items:flex-start;
+    /* OPAQUE, not translucent - this sits directly above .ctr-swipe-bg's red
+       "Clear" reveal, which a translucent row would let bleed through before
+       any swipe happened. Solid colour = rgba(255,255,255,.07) pre-blended
+       onto the panel's own #111113 background. */
+    background:#242426;border-radius:calc(14px*var(--s,1));
+    padding:calc(11px*var(--s,1)) calc(13px*var(--s,1));position:relative;
+    transition:transform .2s ease;touch-action:pan-y;}
+  body.light #ancsCtr .ctr-row,#ancsCtr.light .ctr-row{background:#e8e8ea;}
+  #ancsCtr .ctr-row.dragging{transition:none;}
+  /* knob-scroll focus ring - only visible while the knob is being used to
+     move through the list, matches the accent used elsewhere for selection */
+  #ancsCtr .ctr-row.focused{box-shadow:0 0 0 calc(2px*var(--s,1)) #0a84ff inset;}
+  body.light #ancsCtr .ctr-row.focused,#ancsCtr.light .ctr-row.focused{box-shadow:0 0 0 calc(2px*var(--s,1)) #007aff inset;}
+  #ancsCtr .ctr-msg.expanded{-webkit-line-clamp:unset;}
+  #ancsCtr .ctr-clearall{flex:0 0 auto;align-self:center;margin:calc(4px*var(--s,1)) 0 0;
+    padding:calc(9px*var(--s,1)) calc(18px*var(--s,1));border-radius:999px;border:0;
+    background:rgba(255,59,48,.16);color:#ff453a;font:600 calc(13px*var(--s,1))/1 'Inter',system-ui,sans-serif;
+    letter-spacing:.02em;}
+  body.light #ancsCtr .ctr-clearall,#ancsCtr.light .ctr-clearall{background:rgba(255,59,48,.12);color:#d70015;}
+  #ancsCtr .ctr-ico{flex:0 0 auto;width:calc(30px*var(--s,1));height:calc(30px*var(--s,1));
+    border-radius:calc(8px*var(--s,1));display:flex;align-items:center;
+    justify-content:center;font-size:calc(16px*var(--s,1));background:rgba(255,255,255,.12);}
+  body.light #ancsCtr .ctr-ico,#ancsCtr.light .ctr-ico{background:rgba(0,0,0,.08);}
+  #ancsCtr .ctr-body{flex:1 1 auto;min-width:0;}
+  #ancsCtr .ctr-top{display:flex;justify-content:space-between;gap:8px;
+    font-size:calc(11px*var(--s,1));font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;opacity:.55;margin-bottom:calc(2px*var(--s,1));}
+  #ancsCtr .ctr-name{font-size:calc(15px*var(--s,1));font-weight:600;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #ancsCtr .ctr-msg{font-size:calc(13.5px*var(--s,1));opacity:.82;line-height:1.32;
+    margin-top:calc(2px*var(--s,1));display:-webkit-box;-webkit-line-clamp:4;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  #ancsCtr .ctr-empty{padding:calc(30px*var(--s,1)) 0 calc(40px*var(--s,1));
+    text-align:center;opacity:.4;font-size:calc(14px*var(--s,1));}
+  #ancsCtr .ctr-grip{flex:0 0 auto;align-self:center;width:38px;height:4px;
+    border-radius:2px;background:rgba(255,255,255,.25);margin:calc(7px*var(--s,1)) 0 0;}
+  body.light #ancsCtr .ctr-grip,#ancsCtr.light .ctr-grip{background:rgba(0,0,0,.2);}
+</style>
+<script>
+(function(){
+  var URL_ = window.ANCS_URL || '/api/notify';
+  // Which screen this is, so the central per-device on/off can address it.
+  // Set at patch time: birdthing | weatherthing | kiosk.
+  var DEVICE = window.ANCS_DEVICE || 'birdthing';
+  // Central settings, delivered inside the notification feed itself so there
+  // is no second request. Local prefs stay for per-screen cosmetics (size,
+  // full-screen); anything that must be the SAME everywhere lives here.
+  var CENTRAL = null;
+  var POLL = window.ANCS_POLL_MS || 2500;
+  var BASE_FS = window.ANCS_FS || '21px';
+  var DEF_FULL = window.ANCS_STYLE === 'full';
+
+  // ---- user settings (host page's Settings screen writes these) ----
+  function ls(k, d){ try { var v = localStorage.getItem(k);
+    return v === null ? d : v; } catch(e){ return d; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+  var S = {
+    on:    ls('ancsOn','1') === '1',
+    scale: parseFloat(ls('ancsScale','1')) || 1,
+    full:  ls('ancsFull', DEF_FULL ? '1' : '0') === '1',
+    hold:  parseInt(ls('ancsHold','6'), 10) || 6
+  };
+
+  var wrap = document.createElement('div');
+  wrap.id = 'ancsWrap';
+  document.body.appendChild(wrap);
+
+  function applyStyle(){
+    wrap.className = S.full ? 'full' : '';
+    // the host's own scale variable is inside BASE_FS, so this multiplies the
+    // screen's real typography by the user's notification-size preference
+    wrap.style.setProperty('--ancs-fs',
+      'calc((' + BASE_FS + ') * ' + S.scale + ')');
+  }
+  applyStyle();
+
+  // ---- persistent phone-link status glyph -------------------------------
+  // Shows in the top-right of every display, next to the wifi/bluetooth-style
+  // indicators: a phone icon that is bright when the iPhone is linked to the
+  // ANCS hub and dimmed+slashed when it is not, with a red count badge for how
+  // many notifications the phone is currently showing. window.ANCS_STATUS_SLOT
+  // is a CSS selector to place it inline inside the host's own status row;
+  // window.ANCS_STATUS ('tr'|'tl'|'br'|'bl'|'off') is the fixed-corner
+  // fallback used when no slot is found. Default: inline if a known status row
+  // exists, else fixed top-right.
+  var STAT_SLOT   = window.ANCS_STATUS_SLOT || null;
+  var STAT_ANCHOR = window.ANCS_STATUS_ANCHOR || null;  // sit just left of this element
+  var STAT_POS    = window.ANCS_STATUS || 'tr';
+  var statEl = null, statBadge = null, lastCount = -1, statLinked = null;
+
+  function buildStat(){
+    if (STAT_POS === 'off') return;
+    var host = null;
+    if (STAT_SLOT) host = document.querySelector(STAT_SLOT);
+    if (!host && !STAT_ANCHOR) {
+      var known = ['.top .tr', '.status-stack', '.statusbar', '#statusbar',
+                   '.status-icons', '.sysicons', '#sysbar'];
+      for (var i = 0; i < known.length && !host; i++)
+        host = document.querySelector(known[i]);
+    }
+    statEl = document.createElement('span');
+    statEl.id = 'ancsStat';
+    // inherit the host status row's colour when slotted in; when slotted into a
+    // light page that has no body.light, force a dark glyph. The fixed-corner
+    // fallback ignores this (its CSS pins a mid-grey that works on any bg).
+    if (host && window.ANCS_THEME === 'light') statEl.style.color = '#1c1c1e';
+    // phone outline + a slash line that hides when linked
+    statEl.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+      + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<rect x="7" y="2" width="10" height="20" rx="2.2"></rect>'
+      + '<line x1="11" y1="18" x2="13" y2="18"></line>'
+      + '<line class="slash" x1="3" y1="21" x2="21" y2="3"></line></svg>'
+      + '<span class="badge">0</span>';
+    statBadge = statEl.querySelector('.badge');
+    statEl.classList.add('tappable');
+    statEl.addEventListener('click', function(e){ e.stopPropagation(); toggleCenter(); });
+    if (host) {
+      host.appendChild(statEl);
+      return;
+    }
+    var anchor = STAT_ANCHOR ? document.querySelector(STAT_ANCHOR) : null;
+    if (anchor) {
+      statEl.className = 'fixed anchored';
+      document.body.appendChild(statEl);
+      var place = function(){
+        var r = anchor.getBoundingClientRect();
+        if (!r.width && !r.height) return;   // anchor not laid out yet
+        statEl.style.top = Math.round(r.top + r.height / 2
+          - statEl.offsetHeight / 2) + 'px';
+        statEl.style.right = Math.round(window.innerWidth - r.left + 10) + 'px';
+      };
+      place();
+      setTimeout(place, 400);
+      setTimeout(place, 1500);
+      window.addEventListener('resize', place);
+    } else {
+      statEl.className = 'fixed ' + STAT_POS;
+      document.body.appendChild(statEl);
+    }
+  }
+
+  function statSet(linked, count){
+    if (!statEl) return;
+    if (linked !== statLinked) {
+      statEl.classList.toggle('linked', !!linked);
+      statLinked = linked;
+    }
+    count = count || 0;
+    if (count !== lastCount) {
+      statBadge.textContent = count > 9 ? '9+' : String(count);
+      statEl.classList.toggle('has-badge', count > 0);
+      if (count > lastCount && lastCount >= 0) {
+        statEl.classList.remove('ping');
+        void statEl.offsetWidth;            // restart the animation
+        statEl.classList.add('ping');
+      }
+      lastCount = count;
+    }
+  }
+
+  // seen[uid] = { el?, timer?, full?, seeded? }  - this session's live view.
+  var seen = Object.create(null);
+  var queue = [], current = null;
+
+  // -- reload-safe "already handled" set --------------------------------
+  // The displays reload a lot (kiosk-watchdog relaunch, crash, network blip,
+  // deploy). Seeding the WHOLE feed as "seen" on the first poll after every
+  // load ate any notification that arrived in the reload gap - already in the
+  // feed on that first poll, so it never toasted.
+  // We remember handled ids in localStorage. The id is the gateway's
+  // `disp_uid`: a per-process counter seeded from int(time()*1000), so it is
+  // monotonic within a run and a restart jumps it forward past every earlier
+  // value - no cross-session collision. Pruned to 24h.
+  // IMPORTANT: this only decides "already TOASTED once" - it must never be the
+  // reason a fresh notification is skipped. New notifications always get a
+  // brand-new (higher) disp_uid, so they are never in this set.
+  // V2: V1 accumulated recycled disp_uids while the gateway had the
+  // EVT_ADDED-merges-into-a-reused-uid bug; abandon it wholesale.
+  var SEEN_KEY = 'ancsSeenV2';
+  function loadSeen(){
+    var out = Object.create(null);
+    try {
+      localStorage.removeItem('ancsSeenV1');
+      var raw = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+      var cut = Date.now() - 864e5;
+      for (var k in raw) if (raw[k] > cut) out[k] = raw[k];
+    } catch(e){}
+    return out;
+  }
+  var seenTs = loadSeen();
+  var seenDirty = false, seenSaveAt = 0;
+  function markSeen(uid){
+    if (seenTs[uid] !== undefined) return;
+    seenTs[uid] = Date.now(); seenDirty = true;
+  }
+  function flushSeen(){
+    if (!seenDirty) return;
+    var now = Date.now();
+    if (now - seenSaveAt < 1500) return;
+    seenSaveAt = now; seenDirty = false;
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenTs)); } catch(e){}
+  }
+  // First run ever (nothing remembered): don't replay a backlog as a stack of
+  // toasts - only surface ones from the last ~30s.
+  var COLD_START = true;
+  for (var _k in seenTs) { COLD_START = false; break; }
+
+  var GLYPH = {IncomingCall:'\u{1F4DE}', MissedCall:'\u{1F4F5}', Voicemail:'\u{1F4FC}',
+    Social:'\u{1F4AC}', Schedule:'\u{1F4C5}', Email:'\u2709\uFE0F', News:'\u{1F4F0}',
+    HealthAndFitness:'\u2764\uFE0F', BusinessAndFinance:'\u{1F4B3}',
+    Location:'\u{1F4CD}', Entertainment:'\u{1F3AC}', Other:'\u{1F514}'};
+  var APP_GLYPH = {Messages:'\u{1F4AC}', WhatsApp:'\u{1F4AC}', Phone:'\u{1F4DE}',
+    FaceTime:'\u{1F4F9}', Mail:'\u2709\uFE0F', Gmail:'\u2709\uFE0F',
+    Calendar:'\u{1F4C5}', Clock:'\u23F0', Findmy:'\u{1F4CD}', Myq:'\u{1F6AA}'};
+  function glyph(n){ return APP_GLYPH[n.app] || GLYPH[n.cat] || GLYPH.Other; }
+
+  function fmtAge(sec){
+    sec = Math.max(0, Math.round(sec || 0));
+    if (sec < 45)   return 'now';
+    if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+    if (sec < 86400) return Math.round(sec / 3600) + 'h ago';
+    return Math.round(sec / 86400) + 'd ago';
+  }
+
+  // ---- notification centre: swipe down from the top-right (or tap the glyph)
+  // to see everything still on the phone, iOS-style. Uses the same feed the
+  // toasts do; a row = a notification the phone has NOT cleared.
+  var ctr = null, ctrBack = null, ctrList = null, ctrOpen = false, ctrItems = [];
+  function buildCenter(){
+    ctrBack = document.createElement('div'); ctrBack.id = 'ancsCtrBack';
+    ctr = document.createElement('div'); ctr.id = 'ancsCtr';
+    if (window.ANCS_THEME === 'light') ctr.classList.add('light');
+    // scale the panel's px sizes to this screen's notification typography
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;font-size:calc((' + BASE_FS + ')*' + S.scale + ')';
+    probe.textContent = 'x'; document.body.appendChild(probe);
+    var fs = parseFloat(getComputedStyle(probe).fontSize) || 21;
+    document.body.removeChild(probe);
+    ctr.style.setProperty('--s', Math.max(0.85, Math.min(2.4, fs / 21)));
+    ctr.innerHTML =
+      '<div class="ctr-head"><span class="ctr-title">Phone</span>'
+      + '<span class="ctr-hint">swipe up to close</span></div>'
+      + '<div class="ctr-list"></div>'
+      + '<button type="button" class="ctr-clearall">Clear All</button>'
+      + '<div class="ctr-grip"></div>';
+    ctrList = ctr.querySelector('.ctr-list');
+    ctr.querySelector('.ctr-clearall').addEventListener('click', function(e){
+      e.stopPropagation(); clearNotif(null);
+    });
+    document.body.appendChild(ctrBack);
+    document.body.appendChild(ctr);
+
+    ctrBack.addEventListener('click', function(){ closeCenter(false); });
+    ctr.addEventListener('click', function(e){ e.stopPropagation(); });
+
+    // Swipe DOWN starting in the top-right corner -> open. Listeners are on
+    // document and gated by where the touch starts, and they only ever fire on
+    // a clear vertical drag - a TAP moves nothing, so the host's own top-bar
+    // controls (the clock, etc.) keep working untouched.
+    var sy = 0, sx = 0, arm = 0;   // arm: 1 = open-swipe candidate, 2 = close-swipe
+    document.addEventListener('touchstart', function(e){
+      var t = e.touches[0]; sy = t.clientY; sx = t.clientX; arm = 0;
+      if (ctrOpen) { arm = 2; return; }
+      if (t.clientY < Math.max(46, innerHeight * 0.09) &&
+          t.clientX > innerWidth * 0.6) arm = 1;
+    }, {passive:true});
+    document.addEventListener('touchmove', function(e){
+      if (!arm) return;
+      var t = e.touches[0], dy = t.clientY - sy, dx = t.clientX - sx;
+      if (arm === 1 && dy > 36 && dy > Math.abs(dx)) { arm = 0; openCenter(); }
+      else if (arm === 2 && sy - t.clientY > 44) { arm = 0; closeCenter(); }
+    }, {passive:true});
+    document.addEventListener('touchend', function(){ arm = 0; }, {passive:true});
+  }
+  function openCenter(){
+    if (!ctr) return;
+    ctrOpen = true;
+    ctrFocusIdx = 0;
+    renderCenter(ctrItems);
+    ctr.classList.add('open'); ctrBack.classList.add('open');
+  }
+  function closeCenter(goHome){
+    ctrOpen = false;
+    if (ctr) { ctr.classList.remove('open'); ctrBack.classList.remove('open'); }
+    // The physical "back" button (Escape, distinct from the knob's own
+    // press/Enter) both closes this overlay AND drops whatever the host page
+    // was showing underneath back to its home/live view - not just whatever
+    // view happened to be open behind the notification centre.
+    if (goHome) {
+      try {
+        if (typeof closeAllOverlays === 'function') closeAllOverlays();
+        if (typeof goLive === 'function') goLive();
+      } catch (e) {}
+    }
+  }
+  function toggleCenter(){ ctrOpen ? closeCenter(false) : openCenter(); }
+
+  // ---- knob navigation while the centre is open ----------------------------
+  // Rotation is bridged in as ArrowUp/ArrowDown key events (same mechanism the
+  // host page's own knob-scroll uses); the knob's own press arrives as Enter;
+  // the separate physical button below the knob arrives as Escape. Captured
+  // (not bubble phase) and stopped here so none of it also reaches the host
+  // page's keydown handler while the centre is on screen.
+  var ctrFocusIdx = 0, ctrRows = [];
+  function ctrApplyFocus(){
+    ctrRows.forEach(function(r, i){ r.classList.toggle('focused', i === ctrFocusIdx); });
+    if (ctrRows[ctrFocusIdx]) ctrRows[ctrFocusIdx].scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+  function ctrMoveFocus(delta){
+    if (!ctrRows.length) return;
+    ctrFocusIdx = Math.max(0, Math.min(ctrRows.length - 1, ctrFocusIdx + delta));
+    ctrApplyFocus();
+  }
+  document.addEventListener('keydown', function(e){
+    if (!ctrOpen) return;
+    var k = e.key;
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Escape' && k !== 'Backspace' && k !== 'Enter') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    if (k === 'Escape' || k === 'Backspace') { closeCenter(true); return; }
+    if (k === 'ArrowDown') { ctrMoveFocus(1); return; }
+    if (k === 'ArrowUp') { ctrMoveFocus(-1); return; }
+    if (k === 'Enter' && ctrRows[ctrFocusIdx]) { ctrRows[ctrFocusIdx].click(); return; }
+  }, true);
+
+  // "Clear" a display-side dismiss - hides it here (and, once the next poll
+  // lands on every screen, everywhere) but CANNOT reach the phone's own
+  // Notification Centre: ANCS has no accessory-initiated remove, only the
+  // phone-to-accessory EVT_REMOVED this widget already listens for. uid=null
+  // clears everything currently listed; a real uid clears just that row.
+  var CLEAR_URL = window.ANCS_CLEAR_URL || '/api/notifyclear';
+  function clearNotif(uid){
+    // optimistic local hide so it feels instant on the screen you tapped
+    ctrItems.forEach(function(n){ if (uid === null || n.uid === uid) n._dismissedLocal = true; });
+    renderCenter(ctrItems);
+    fetch(CLEAR_URL + (uid !== null ? ('?uid=' + uid) : ''), {cache:'no-store'}).catch(function(){});
+  }
+
+  function renderCenter(items){
+    ctrItems = items || ctrItems;
+    if (!ctrOpen || !ctrList) return;
+    var live = ctrItems.filter(function(n){
+      return !n.removed_ts && n.active !== false && !n.dismissed_ts && !n._dismissedLocal;
+    });
+    ctrRows = [];
+    if (!live.length) {
+      ctrList.innerHTML = '<div class="ctr-empty">No notifications</div>';
+      return;
+    }
+    ctrList.textContent = '';
+    live.forEach(function(n){
+      var wrap2 = document.createElement('div'); wrap2.className = 'ctr-swipe';
+      var bg = document.createElement('div'); bg.className = 'ctr-swipe-bg';
+      bg.textContent = 'Clear';
+      var row = document.createElement('div'); row.className = 'ctr-row';
+      row.innerHTML = '<div class="ctr-ico"></div><div class="ctr-body">'
+        + '<div class="ctr-top"><span class="ctr-app"></span><span class="ctr-age"></span></div>'
+        + '<div class="ctr-name"></div>'
+        + (n.message ? '<div class="ctr-msg"></div>' : '') + '</div>';
+      row.querySelector('.ctr-ico').textContent = glyph(n);
+      row.querySelector('.ctr-app').textContent = n.call ? 'Call' : (n.app || '');
+      row.querySelector('.ctr-age').textContent = fmtAge(n.age);
+      row.querySelector('.ctr-name').textContent = n.title || n.app || 'Notification';
+      var msgEl = n.message ? row.querySelector('.ctr-msg') : null;
+      if (msgEl) msgEl.textContent = n.message;
+      // tap a row to expand its message (line-clamp lifted) and show the
+      // exact time; tapping again collapses. A drag (see below) is not a tap.
+      var rowMoved = false;
+      row.addEventListener('click', function(){
+        if (rowMoved) { rowMoved = false; return; }
+        var wasExpanded = row.classList.contains('expanded');
+        row.classList.toggle('expanded', !wasExpanded);
+        if (msgEl) msgEl.classList.toggle('expanded', !wasExpanded);
+        row.querySelector('.ctr-age').textContent = wasExpanded
+          ? fmtAge(n.age)
+          : new Date((n.ts || 0) * 1000).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      });
+      // swipe LEFT on a row to clear just that one - iOS-style reveal.
+      var rsx = 0, rsy = 0, rdx = 0, rarm = false;
+      row.addEventListener('touchstart', function(e){
+        var t = e.touches[0]; rsx = t.clientX; rsy = t.clientY; rdx = 0; rarm = false;
+        row.classList.add('dragging');
+      }, {passive:true});
+      row.addEventListener('touchmove', function(e){
+        var t = e.touches[0], dx = t.clientX - rsx, dy = t.clientY - rsy;
+        if (!rarm && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) rarm = true;
+        if (!rarm) return;
+        rdx = Math.min(0, dx); rowMoved = true;
+        row.style.transform = 'translateX(' + rdx + 'px)';
+      }, {passive:true});
+      row.addEventListener('touchend', function(){
+        row.classList.remove('dragging');
+        if (rdx < -70) {
+          row.style.transform = 'translateX(-100%)';
+          setTimeout(function(){ clearNotif(n.uid); }, 180);
+        } else {
+          row.style.transform = 'translateX(0)';
+        }
+      }, {passive:true});
+      wrap2.appendChild(bg); wrap2.appendChild(row);
+      ctrList.appendChild(wrap2);
+      ctrRows.push(row);
+    });
+    if (ctrFocusIdx >= ctrRows.length) ctrFocusIdx = ctrRows.length - 1;
+    if (ctrFocusIdx < 0) ctrFocusIdx = 0;
+    ctrApplyFocus();
+  }
+
+  function build(n, full){
+    var el = document.createElement('div');
+    el.className = 'ancs ' + (full ? 'full' : 'toast')
+      + (n.call ? ' call' : '')
+      + (window.ANCS_THEME === 'light' ? ' light' : '');
+    var who = n.title || n.app || 'Notification';
+    var sub = (n.subtitle && n.subtitle !== who) ? n.subtitle : '';
+    var msg = n.call ? (n.message || sub || 'Incoming call')
+                     : (n.message || sub || '');
+    el.innerHTML = '<div class="ancs-ico"></div><div class="ancs-body">'
+      + '<div class="ancs-app"></div><div class="ancs-title"></div>'
+      + (msg ? '<div class="ancs-msg"></div>' : '') + '</div>';
+    if (full) {   // fullscreen centres the parts directly, no inner column
+      var b = el.querySelector('.ancs-body');
+      while (b.firstChild) el.insertBefore(b.firstChild, b);
+      el.removeChild(b);
+    }
+    // textContent everywhere - notification text is untrusted, never innerHTML
+    el.querySelector('.ancs-ico').textContent = glyph(n);
+    el.querySelector('.ancs-app').textContent =
+      n.call ? 'Incoming call' : (n.app || '');
+    el.querySelector('.ancs-title').textContent = who;
+    if (msg) el.querySelector('.ancs-msg').textContent = msg;
+    el.addEventListener('click', function(){ dismiss(n.uid); });
+    return el;
+  }
+
+  function dismiss(uid){
+    var rec = seen[uid];
+    if (!rec || !rec.el) return;
+    if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+    var el = rec.el, wasFull = rec.full;
+    rec.el = null;
+    if (current === uid) current = null;
+    el.classList.remove('in');
+    setTimeout(function(){
+      if (el.parentNode) el.parentNode.removeChild(el);
+      if (wasFull) next();
+    }, 950);
+  }
+
+  function present(n){
+    var full = S.full;
+    var el = build(n, full);
+    wrap.appendChild(el);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.classList.add('in'); });
+    });
+    var rec = seen[n.uid] || (seen[n.uid] = {});
+    rec.el = el; rec.full = full;
+    if (full) current = n.uid;
+    var hold = (CENTRAL && CENTRAL.hold_seconds) ? CENTRAL.hold_seconds : S.hold;
+    var ms = (n.call ? Math.max(hold, 20) : hold) * 1000;
+    rec.timer = setTimeout(function(){ dismiss(n.uid); }, ms);
+  }
+
+  function next(){
+    if (current !== null || !queue.length) return;
+    present(queue.shift());
+  }
+  function show(n){
+    markSeen(n.uid);
+    if (!S.on) { seen[n.uid] = {seeded:true}; return; }
+    if (S.full) { queue.push(n); next(); } else present(n);
+  }
+
+  function update(n){
+    var rec = seen[n.uid];
+    if (!rec || !rec.el) return;
+    var t = rec.el.querySelector('.ancs-title');
+    if (t && n.title && t.textContent !== n.title) t.textContent = n.title;
+    var m = rec.el.querySelector('.ancs-msg');
+    if (m && n.message && m.textContent !== n.message) m.textContent = n.message;
+  }
+
+  // 2026-10-02: robustness against a flaky link (found live on the WeatherThing:
+  // swipe-down list showed the notification, but the pop-up never did).
+  //  - an ok:false/empty reply from the proxy means "could not reach the gateway",
+  //    NOT "no notifications" - acting on it used to retract the toast on screen
+  //    (and the item was then never re-shown), so such replies are now skipped;
+  //  - a toast is only retracted for being absent from the feed after it has been
+  //    missing from 2 consecutive GOOD replies (the hold timer removes it anyway);
+  //  - the toast queue self-heals if `current` ever points at nothing;
+  //  - one bad item can't stop the rest, errors are logged instead of swallowed;
+  //  - polls never overlap (a slow link used to stack parallel ticks).
+  var busy = false, busyAt = 0, failN = 0, lastGood = 0;
+  function healQueue(){
+    if (current !== null) {
+      var rc = seen[current];
+      if (!rc || !rc.el) current = null;
+    }
+    next();
+  }
+  function tick(){
+    var nowT = (window.performance && performance.now) ? performance.now() : 0;
+    if (busy && nowT - busyAt < 9000) return;
+    busy = true; busyAt = nowT;
+    fetch(URL_, {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d) return;
+        if (d.ok === false) {
+          // gateway unreachable from the proxy: keep everything exactly as it is.
+          // Only after ~15 s of consecutive failures say the phone link is unknown.
+          failN++;
+          if (failN === 6) statSet(false, 0);
+          return;
+        }
+        failN = 0; lastGood = nowT;
+        // badge = notifications the phone is STILL showing. The gateway keeps
+        // recently-cleared ones in the feed (active:true, removed_ts set) so it
+        // can de-dupe and show "recent" - counting the raw list makes the badge
+        // stick at its high-water mark and never come down when you clear them
+        // on the phone. Count only the ones with no removal and not gone inactive.
+        var lc = 0, _it = d.items || [];
+        for (var _i = 0; _i < _it.length; _i++)
+          if (!_it[_i].removed_ts && _it[_i].active !== false && !_it[_i].dismissed_ts) lc++;
+        statSet(d.linked, lc);
+        renderCenter(_it);
+        if (!d.items) return;
+        var live = Object.create(null);
+        if (d.settings) { CENTRAL = d.settings; markCentral(); }
+        // Central per-device switch: this screen is turned off from the
+        // BirdThing settings screen. Remember everything so nothing replays in
+        // a burst when it is switched back on.
+        if (CENTRAL && CENTRAL.devices && CENTRAL.devices[DEVICE] === false) {
+          // take down anything currently on screen FIRST - overwriting its record
+          // below would orphan the element (and leave `current` stuck)
+          Object.keys(seen).forEach(function(u){ if (seen[u] && seen[u].el) dismiss(u); });
+          d.items.forEach(function(n){ seen[n.uid] = {seeded:true}; markSeen(n.uid); });
+          flushSeen();
+          healQueue();
+          return;
+        }
+        d.items.forEach(function(n){ live[n.uid] = n; });
+        healQueue();
+        d.items.forEach(function(n){ try {
+          var rec = seen[n.uid];
+          if (rec && rec.el) {                       // currently on screen
+            // a phone-side clear (removed_ts) must NOT retract a toast that is
+            // mid-hold - someone across the room may be reading it. Only a
+            // call ending (active:false), or an explicit "Clear" tapped on
+            // ANY of the displays (dismissed_ts), pulls its banner.
+            if (n.active === false || n.dismissed_ts) dismiss(n.uid);
+            else update(n);
+            return;
+          }
+          if (rec || seenTs[n.uid] !== undefined) {  // already toasted (this load or a prior one)
+            if (!rec) seen[n.uid] = {seeded:true};
+            return;
+          }
+          // Brand new to us. Toast it if it is a real, recent arrival - EVEN
+          // IF the phone has since cleared it. The user glancing at a text on
+          // their phone a second after it lands must not stop it reaching the
+          // room displays; that is the whole point of these screens, and the
+          // gateway keeps such items in the feed (active:true) for exactly
+          // this. removed_ts only affects the badge count, never the toast.
+          var age = (typeof n.age === 'number') ? n.age : 999;
+          var withinColdWindow = !COLD_START || age < 30;
+          if (n.fresh && withinColdWindow && n.active !== false) {
+            seen[n.uid] = {}; show(n);               // show() calls markSeen()
+          } else {
+            seen[n.uid] = {seeded:true}; markSeen(n.uid);
+          }
+        } catch (ie) { try { console.error('ancs item', ie); } catch(_){} } });
+        Object.keys(seen).forEach(function(uid){
+          var r = seen[uid];
+          if (!r || !r.el) return;
+          if (live[uid]) { r.miss = 0; return; }
+          r.miss = (r.miss || 0) + 1;                // absent from this GOOD reply
+          if (r.miss >= 2) dismiss(uid);
+        });
+        COLD_START = false;
+        flushSeen();
+      })
+      .catch(function(e){ try { console.error('ancs tick', e); } catch(_){} })
+      .then(function(){ busy = false; });
+  }
+
+  // ---------------- settings rows, injected into the host's panel ----------
+  function injectSettings(){
+    var body = document.querySelector('#settings .vbody');
+    if (!body || document.getElementById('ancsSet')) return;
+
+    // the two dashboards use different class names for the same thing
+    var labelCls = body.querySelector('.sk') ? 'sk' : 'lbl';
+    var segCls   = body.querySelector('.seg2') ? 'seg2' : 'seg';
+
+    function row(label, extraId){
+      var d = document.createElement('div');
+      d.className = 'srow';
+      d.innerHTML = '<span class="' + labelCls + '"></span>';
+      d.firstChild.textContent = label;
+      if (extraId) {
+        var s = document.createElement('span');
+        s.id = extraId;
+        s.style.cssText = 'color:var(--sec,#888);font-weight:600;'
+          + 'letter-spacing:0;margin-left:6px';
+        d.firstChild.appendChild(s);
+      }
+      return d;
+    }
+    function seg(buttons){
+      var g = document.createElement('div');
+      g.className = segCls;
+      buttons.forEach(function(b){
+        var el = document.createElement('button');
+        el.textContent = b[0];
+        el.onclick = b[1];
+        if (b[2]) el.dataset.ancs = b[2];
+        g.appendChild(el);
+      });
+      return g;
+    }
+
+    var wrapEl = document.createElement('div');
+    wrapEl.id = 'ancsSet';
+
+    var head = row('Phone notifications');
+    head.appendChild(seg([
+      ['On',  function(){ S.on = true;  lsSet('ancsOn','1'); mark(); }, 'on1'],
+      ['Off', function(){ S.on = false; lsSet('ancsOn','0'); mark(); }, 'on0']
+    ]));
+    wrapEl.appendChild(head);
+
+    var sz = row('Notification size', 'ancsPct');
+    var bw = document.createElement('div');
+    bw.className = 'bwrap';
+    [['\u2212', function(){ setScale(S.scale - 0.1); }],
+     ['+',      function(){ setScale(S.scale + 0.1); }],
+     ['Reset',  function(){ setScale(1); }]].forEach(function(b, i){
+      var el = document.createElement('button');
+      el.className = 'bbtn';
+      el.textContent = b[0];
+      el.onclick = b[1];
+      if (i === 2) el.style.cssText = 'width:auto;padding:13px 20px';
+      bw.appendChild(el);
+    });
+    sz.appendChild(bw);
+    wrapEl.appendChild(sz);
+
+    var fs = row('Full screen');
+    fs.appendChild(seg([
+      ['On',  function(){ S.full = true;  lsSet('ancsFull','1'); applyStyle(); mark(); }, 'f1'],
+      ['Off', function(){ S.full = false; lsSet('ancsFull','0'); applyStyle(); mark(); }, 'f0']
+    ]));
+    var hint = document.createElement('span');
+    hint.className = 'about';
+    hint.style.cssText = 'padding:4px 4px 0';
+    hint.textContent = 'On: the alert takes over the whole screen, then fades '
+      + 'away. Off: a banner across the top.';
+    fs.appendChild(hint);
+    wrapEl.appendChild(fs);
+
+    // ---- CENTRAL settings ------------------------------------------------
+    // These live on the gateway and apply to EVERY screen, so they are only
+    // offered here on the BirdThing dashboard - it is the one screen whose
+    // origin can write them (the others proxy the feed read-only). Setting
+    // "how long" and "which screens" in one place is the entire point.
+    if (DEVICE === 'birdthing') {
+      var hd = row('Show for', 'ancsSec');
+      var hb = document.createElement('div');
+      hb.className = 'bwrap';
+      [['-', function(){ bumpHold(-1); }],
+       ['+', function(){ bumpHold(1); }]].forEach(function(b){
+        var el = document.createElement('button');
+        el.className = 'bbtn';
+        el.textContent = b[0];
+        el.onclick = b[1];
+        hb.appendChild(el);
+      });
+      hd.appendChild(hb);
+      var hh = document.createElement('span');
+      hh.className = 'about';
+      hh.style.cssText = 'padding:4px 4px 0';
+      hh.textContent = 'How long each alert stays on screen, on every display. '
+        + 'Incoming calls always stay at least 20s.';
+      hd.appendChild(hh);
+      wrapEl.appendChild(hd);
+
+      var mb = row('Message text');
+      mb.appendChild(seg([
+        ['Show', function(){ centralSet('show_body=1'); }, 'mb1'],
+        ['Hide', function(){ centralSet('show_body=0'); }, 'mb0']
+      ]));
+      var mh = document.createElement('span');
+      mh.className = 'about';
+      mh.style.cssText = 'padding:4px 4px 0';
+      mh.textContent = 'Hide shows only who it is from. The text is dropped at '
+        + 'the gateway, so it never reaches any screen.';
+      mb.appendChild(mh);
+      wrapEl.appendChild(mb);
+
+      var dl = document.createElement('div');
+      dl.className = 'srow';
+      var dlk = document.createElement('span');
+      dlk.className = 'sk';
+      dlk.textContent = 'Show notifications on';
+      dl.appendChild(dlk);
+      [['birdthing', 'This screen (BirdThing)'],
+       ['weatherthing', 'Bedroom WeatherThing'],
+       ['kiosk', 'Bedroom weather station']].forEach(function(d){
+        var r2 = document.createElement('div');
+        r2.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px';
+        var lab = document.createElement('span');
+        lab.textContent = d[1];
+        lab.style.cssText = 'font-size:.92em;opacity:.85';
+        r2.appendChild(lab);
+        r2.appendChild(seg([
+          ['On',  function(){ centralSet('dev_' + d[0] + '=1'); }, 'd1_' + d[0]],
+          ['Off', function(){ centralSet('dev_' + d[0] + '=0'); }, 'd0_' + d[0]]
+        ]));
+        dl.appendChild(r2);
+      });
+      wrapEl.appendChild(dl);
+    }
+
+    body.appendChild(wrapEl);
+    mark();
+    markCentral();
+    if (DEVICE === 'birdthing') {
+      // pull current values so the panel is never blank when first opened
+      fetch('/api/notifyset', {cache:'no-store'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.settings) { CENTRAL = d.settings; markCentral(); } })
+        .catch(function(){});
+    }
+  }
+
+  function setScale(v){
+    S.scale = Math.max(0.6, Math.min(3, Math.round(v * 10) / 10));
+    lsSet('ancsScale', S.scale); applyStyle(); mark();
+  }
+  // Writes go through the BirdThing API, which proxies to the gateway; the
+  // other screens have no route to :8099 at all.
+  function centralSet(qs){
+    fetch('/api/notifyset?' + qs, {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d && d.settings) { CENTRAL = d.settings; markCentral(); } })
+      .catch(function(){});
+  }
+  function bumpHold(dir){
+    var cur = (CENTRAL && CENTRAL.hold_seconds) ? CENTRAL.hold_seconds : S.hold;
+    var next = Math.max(2, Math.min(60, cur + dir * (cur >= 20 ? 5 : 2)));
+    centralSet('hold=' + next);
+  }
+  function markCentral(){
+    if (!CENTRAL) return;
+    var s2 = document.getElementById('ancsSec');
+    if (s2) s2.textContent = CENTRAL.hold_seconds + 's';
+    var q = document.querySelectorAll('#ancsSet button[data-ancs]');
+    Array.prototype.forEach.call(q, function(b){
+      var k = b.dataset.ancs, on = null;
+      if (k === 'mb1') on = CENTRAL.show_body !== false;
+      else if (k === 'mb0') on = CENTRAL.show_body === false;
+      else if (k.indexOf('d1_') === 0) on = (CENTRAL.devices || {})[k.slice(3)] !== false;
+      else if (k.indexOf('d0_') === 0) on = (CENTRAL.devices || {})[k.slice(3)] === false;
+      if (on !== null) b.classList.toggle('ancs-sel', on);
+    });
+  }
+
+  function setHold(v){
+    S.hold = Math.max(2, Math.min(30, v));
+    lsSet('ancsHold', S.hold); mark();
+  }
+  function mark(){
+    var p = document.getElementById('ancsPct');
+    if (p) p.textContent = Math.round(S.scale * 100) + '%';
+    var s = document.getElementById('ancsSec');
+    if (s) s.textContent = S.hold + 's';
+    var q = document.querySelectorAll('#ancsSet button[data-ancs]');
+    Array.prototype.forEach.call(q, function(b){
+      var k = b.dataset.ancs;
+      var on = (k === 'on1' && S.on) || (k === 'on0' && !S.on)
+            || (k === 'f1' && S.full) || (k === 'f0' && !S.full);
+      b.classList.toggle('ancs-sel', on);
+    });
+  }
+
+  // the settings view may not exist yet at load; retry briefly, then watch
+  var tries = 0;
+  var iv = setInterval(function(){
+    injectSettings();
+    if (document.getElementById('ancsSet') || ++tries > 40) clearInterval(iv);
+  }, 250);
+
+  buildCenter();
+  buildStat();
+  tick();
+  setInterval(tick, POLL);
+})();
+</script>
+<!-- ===== end iPhone notification display ==================================== -->

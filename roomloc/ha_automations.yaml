@@ -1,0 +1,74 @@
+# Follow-Me Audio — hand the iPhone's Bluetooth stream to whichever Echo is in
+# the room roomloc says the phone is in.
+#
+# ENTITY IDs marked <<...>> must be filled in after Alexa Media Player is
+# connected. The bluetooth source name is whatever the Echo calls the phone in
+# its paired list (usually the iPhone's name) — read it off the media player's
+# source_list attribute in Developer Tools > States.
+
+- id: roomloc_follow_me_to_kitchen
+  alias: "Follow Me Audio: switch to kitchen Echo"
+  mode: single
+  triggers:
+    - trigger: state
+      entity_id: sensor.phone_room
+      to: "kitchen"
+  conditions:
+    - condition: state
+      entity_id: input_boolean.follow_me_audio
+      state: "on"
+    # Only steal the stream if audio is actually going to the other Echo —
+    # otherwise every walk through the house wakes up Bluetooth for nothing.
+    - condition: state
+      entity_id: <<BATHROOM_ECHO>>
+      state: "playing"
+  actions:
+    # Connect first, disconnect second: iOS falls back to the phone speaker the
+    # moment it has no Bluetooth sink, and then will not auto-resume.
+    - action: media_player.select_source
+      target:
+        entity_id: <<KITCHEN_ECHO>>
+      data:
+        source: "<<PHONE_BT_NAME>>"
+    - delay: "00:00:04"
+    - action: media_player.select_source
+      target:
+        entity_id: <<BATHROOM_ECHO>>
+      data:
+        source: "Local Speaker"
+    - delay: "00:00:02"
+    # iOS pauses on route change; this is an AVRCP play back at the phone.
+    - action: media_player.media_play
+      target:
+        entity_id: <<KITCHEN_ECHO>>
+
+- id: roomloc_follow_me_to_bathroom
+  alias: "Follow Me Audio: switch to bathroom Echo"
+  mode: single
+  triggers:
+    - trigger: state
+      entity_id: sensor.phone_room
+      to: "bathroom"
+  conditions:
+    - condition: state
+      entity_id: input_boolean.follow_me_audio
+      state: "on"
+    - condition: state
+      entity_id: <<KITCHEN_ECHO>>
+      state: "playing"
+  actions:
+    - action: media_player.select_source
+      target:
+        entity_id: <<BATHROOM_ECHO>>
+      data:
+        source: "<<PHONE_BT_NAME>>"
+    - delay: "00:00:04"
+    - action: media_player.select_source
+      target:
+        entity_id: <<KITCHEN_ECHO>>
+      data:
+        source: "Local Speaker"
+    - delay: "00:00:02"
+    - action: media_player.media_play
+      target:
+        entity_id: <<BATHROOM_ECHO>>

@@ -1,0 +1,140 @@
+{
+  "today": {
+    "date": "2026-06-15",
+    "detections": 2,
+    "species": 2,
+    "conf_mean": 0.632,
+    "conf_median": 0.632,
+    "high_conf_pct": 0.0,
+    "borderline_pct": 0.0,
+    "hourly": [
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "top": [
+      [
+        "Green Frog",
+        1,
+        0.66
+      ],
+      [
+        "Asian Emerald Dove",
+        1,
+        0.604
+      ]
+    ]
+  },
+  "yesterday": {
+    "date": "2026-06-14",
+    "detections": 99,
+    "species": 18,
+    "conf_mean": 0.746,
+    "conf_median": 0.718,
+    "high_conf_pct": 23.2,
+    "borderline_pct": 27.3,
+    "hourly": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      5,
+      7,
+      0,
+      2,
+      4,
+      14,
+      18,
+      26,
+      9,
+      6,
+      8,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "top": [
+      [
+        "Red-breasted Nuthatch",
+        41,
+        0.717
+      ],
+      [
+        "American Goldfinch",
+        20,
+        0.861
+      ],
+      [
+        "Clark's Nutcracker",
+        9,
+        0.68
+      ],
+      [
+        "Gray-crowned Rosy-Finch",
+        8,
+        0.689
+      ],
+      [
+        "Eastern Towhee",
+        5,
+        0.827
+      ],
+      [
+        "American Robin",
+        2,
+        0.816
+      ],
+      [
+        "Hermit Thrush",
+        2,
+        0.724
+      ],
+      [
+        "Rock Wren",
+        2,
+        0.635
+      ],
+      [
+        "Black-capped Chickadee",
+        1,
+        0.955
+      ],
+      [
+        "Great Tit",
+        1,
+        0.625
+      ]
+    ]
+  },
+  "alltime": [
+    1067,
+    108
+  ]
+}

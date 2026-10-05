@@ -1,0 +1,6 @@
+[Unit]
+Description=BirdThing nightly maintenance (clear broken thumbnails, trim recordings, free RAM)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/birdthing/nightly_maintenance.sh

@@ -1,0 +1,13 @@
+[Unit]
+Description=BirdThing knob/button/brightness bridge (rotary -> dashboard via DevTools)
+After=chromium.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/birdthing/birdknob_ct.py
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,2253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=800, height=480, initial-scale=1, user-scalable=no">
+<title>BirdThing</title>
+<style>
+  @font-face{font-family:'Inter';font-weight:400;font-display:swap;src:url('/assets/inter-400.woff2') format('woff2');}
+  @font-face{font-family:'Inter';font-weight:500;font-display:swap;src:url('/assets/inter-500.woff2') format('woff2');}
+  @font-face{font-family:'Inter';font-weight:600;font-display:swap;src:url('/assets/inter-600.woff2') format('woff2');}
+  @font-face{font-family:'Inter';font-weight:700;font-display:swap;src:url('/assets/inter-700.woff2') format('woff2');}
+  :root{
+    --bg:#000;--card:rgba(255,255,255,.07);--card2:rgba(255,255,255,.12);
+    --fg:#f5f5f7;--sec:#86868b;--hair:rgba(255,255,255,.10);--green:#30d158;
+    --ts:1;
+    --tst:min(var(--ts),1.85);  /* top-bar text scale: rises with --ts (so XXL > XL) but capped to stay in the bar */
+    --toph:calc(30px + 12px*var(--tst));  /* bar grows taller with the text so big sizes don't overlap */
+  }
+  body.light{
+    --bg:#f2f2f7;--card:rgba(0,0,0,.05);--card2:rgba(0,0,0,.12);
+    --fg:#1c1c1e;--sec:#8a8a8e;--hair:rgba(0,0,0,.10);--green:#28a745;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{width:800px;height:480px;overflow:hidden;background:var(--bg);color:var(--fg);
+    font-family:'Inter',-apple-system,system-ui,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;user-select:none;cursor:none;
+    letter-spacing:-.01em;}
+  #app{display:grid;grid-template-columns:472px 328px;grid-template-rows:var(--toph) calc(480px - var(--toph));
+    width:800px;height:480px;}
+  /* slim top bar, no brand — PINNED so weather+time stay visible over every view */
+  .top{position:fixed;top:0;left:0;width:800px;height:var(--toph);z-index:40;background:var(--bg);
+    display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+  .np{display:flex;align-items:center;gap:8px;max-width:430px;overflow:hidden;
+    font-size:calc(15px*var(--tst));font-weight:500;color:var(--fg);}
+  .np #npText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .npico{color:var(--green);font-size:calc(16px*var(--tst));}
+  .wx{display:flex;align-items:center;gap:7px;font-size:calc(17px*var(--tst));color:var(--fg);font-weight:500;}
+  .wx #wxIcon{font-size:calc(19px*var(--tst));display:inline-flex;align-items:center;}
+  .wx #wxIcon svg{width:1.2em;height:1.2em;display:block;}
+  .tr{display:flex;align-items:center;gap:14px;color:var(--sec);font-size:calc(16px*var(--tst));font-weight:500;white-space:nowrap;}
+  .live{display:flex;align-items:center;gap:7px;color:var(--green);}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(48,209,88,.5);animation:pulse 2s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(48,209,88,.45);}70%{box-shadow:0 0 0 11px rgba(48,209,88,0);}100%{box-shadow:0 0 0 0 rgba(48,209,88,0);}}
+  #clock{color:var(--fg);font-variant-numeric:tabular-nums;}
+  #date{color:var(--sec);}
+  /* HERO */
+  .hero{position:relative;grid-row:2;grid-column:1;margin:6px 10px 14px 16px;border-radius:24px;overflow:hidden;background:#0c0c0e;
+    display:flex;flex-direction:column;}
+  .hero .bg{position:absolute;inset:0;background-size:cover;background-position:center;
+    filter:blur(34px) brightness(.4);transform:scale(1.25);}
+  .hero .photo{position:relative;flex:none;height:56%;background-size:contain;
+    background-repeat:no-repeat;background-position:center;transition:opacity .45s ease;}
+  .hero .empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;color:var(--sec);}
+  .hero .empty .big{font-size:64px;}
+  .hero .meta{position:relative;flex:1;min-height:0;overflow:hidden;padding:18px 24px 20px;
+    background:linear-gradient(0deg,rgba(0,0,0,.92),rgba(0,0,0,.55) 55%,transparent);}
+  .hero .com{font-size:calc(42px*min(var(--ts),1.35));font-weight:700;line-height:1.04;letter-spacing:-.02em;}
+  .hero .sci{font-size:calc(19px*min(var(--ts),1.2));font-weight:400;color:#c7c7cc;font-style:italic;margin-top:5px;}
+  .hero .row{display:flex;align-items:center;gap:13px;margin-top:15px;}
+  .pill{background:rgba(255,255,255,.16);backdrop-filter:blur(10px);font-size:calc(16px*min(var(--ts),1.2));font-weight:600;
+    padding:5px 13px;border-radius:30px;}
+  .hero .when{font-size:calc(16px*min(var(--ts),1.2));color:#c7c7cc;font-weight:500;}
+  /* LIST */
+  aside{grid-row:2;grid-column:2;margin:6px 16px 14px 6px;display:flex;flex-direction:column;min-height:0;}
+  .stats{display:flex;gap:8px;margin-bottom:10px;}
+  .stat{flex:1;background:var(--card);border-radius:16px;padding:11px 15px;}
+  .stat .n{font-size:calc(30px*var(--ts));font-weight:700;line-height:1;letter-spacing:-.02em;}
+  .stat .l{font-size:calc(12px*var(--ts));color:var(--sec);font-weight:500;margin-top:4px;}
+  #list{flex:1;overflow-y:auto;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;margin-right:-6px;padding-right:6px;}
+  #list::-webkit-scrollbar{display:none;}
+  .item{display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:16px;
+    margin-bottom:4px;transition:background .25s ease;}
+  .item.sel{background:var(--card2);}
+  .item .th{width:50px;height:50px;border-radius:13px;object-fit:cover;background:#1c1c1e;flex-shrink:0;}
+  .item .info{flex:1;min-width:0;}
+  .item .nm{font-size:calc(20px*var(--ts));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .item .tm{font-size:calc(14px*var(--ts));color:var(--sec);font-weight:400;margin-top:2px;white-space:nowrap;}
+  .item .cf{font-size:calc(17px*var(--ts));color:var(--sec);font-weight:600;}
+  /* FACTS */
+  #facts{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:25;
+    opacity:0;visibility:hidden;transform:scale(1.015);
+    transition:opacity .26s ease,transform .26s ease,visibility .26s;}
+  #facts.show{opacity:1;visibility:visible;transform:none;}
+  #facts .brand{font-size:20px;font-weight:700;padding:16px 26px 0;letter-spacing:-.02em;}
+  #facts .brand span{color:var(--green);}
+  #facts .fhead{display:flex;align-items:center;gap:18px;padding:8px 26px 16px;}
+  #facts .fphoto{width:104px;height:104px;border-radius:18px;object-fit:cover;background:#1c1c1e;flex-shrink:0;}
+  #facts .ftitle{font-size:calc(36px*var(--ts));font-weight:700;letter-spacing:-.02em;}
+  #facts .fsci{font-size:calc(18px*var(--ts));font-style:italic;color:#c7c7cc;margin-top:4px;}
+  #facts .fplay{margin-left:auto;font-size:calc(16px*var(--ts));color:var(--green);background:var(--card);
+    border-radius:30px;padding:10px 18px;font-weight:600;}
+  #facts .fclose{font-size:calc(16px*var(--ts));color:var(--sec);background:var(--card);
+    border-radius:30px;padding:10px 18px;font-weight:500;}
+  #facts .fbody{flex:1;overflow-y:auto;padding:4px 28px 28px;font-size:calc(24px*var(--ts));line-height:1.55;
+    color:var(--fg);font-weight:400;scroll-behavior:smooth;scrollbar-width:none;}
+  #facts .fbody::-webkit-scrollbar{display:none;}
+  /* WEATHER SETTINGS */
+  #wxset{position:fixed;inset:0;background:rgba(0,0,0,.97);display:none;flex-direction:column;
+    align-items:center;z-index:20;padding:20px;}
+  #wxset.show{display:flex;}
+  #wxset .wtitle{font-size:24px;font-weight:700;margin-bottom:14px;align-self:flex-start;
+    padding-left:6px;letter-spacing:-.02em;}
+  #wxset .wrow{display:flex;align-items:center;gap:14px;margin-bottom:14px;width:100%;max-width:780px;}
+  #wxset .lbl{font-size:17px;color:var(--sec);font-weight:500;}
+  #wxset .seg{display:flex;background:var(--card);border-radius:13px;overflow:hidden;padding:3px;}
+  #wxset .seg button{background:transparent;color:var(--fg);border:none;font-size:19px;font-weight:600;
+    padding:8px 22px;border-radius:10px;font-family:inherit;}
+  #wxset .seg button.on{background:var(--card2);}
+  #wxset .qbox{flex:1;font-size:21px;background:var(--card);border-radius:13px;padding:11px 16px;
+    color:var(--fg);font-weight:500;}
+  #wxset .wclose{font-size:16px;color:var(--sec);background:var(--card);border-radius:30px;
+    padding:11px 18px;font-weight:500;}
+  #wxResults{width:100%;max-width:780px;min-height:44px;margin-bottom:8px;}
+  #wxResults .res{font-size:19px;padding:11px 14px;border-radius:12px;color:var(--fg);font-weight:500;}
+  #wxResults .res:active{background:var(--card2);}
+  #kb{width:100%;max-width:780px;display:flex;flex-direction:column;gap:7px;}
+  .krow{display:flex;gap:7px;justify-content:center;}
+  .key{flex:1;background:var(--card);border-radius:11px;font-size:22px;font-weight:600;
+    color:var(--fg);padding:13px 0;text-align:center;font-family:inherit;}
+  .key:active{background:var(--card2);}
+  .key.wide{flex:2.4;}
+  /* generic full-screen view */
+  body.wxlive .top{display:none!important}
+  .view{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;z-index:15;
+    opacity:0;visibility:hidden;transform:scale(1.015);
+    transition:opacity .26s ease,transform .26s ease,visibility .26s;}
+  .view.show{opacity:1;visibility:visible;transform:none;}
+  .view .vhead{display:flex;align-items:center;gap:14px;padding:16px 24px 10px;}
+  .view .vtitle{font-size:calc(28px*var(--ts));font-weight:700;letter-spacing:-.02em;}
+  .view .vclose{margin-left:auto;font-size:16px;color:var(--sec);background:var(--card);
+    border-radius:30px;padding:10px 18px;font-weight:500;}
+  .view .vbody{flex:1;overflow-y:auto;padding:4px 22px 22px;scroll-behavior:smooth;scrollbar-width:none;}
+  .view .vbody::-webkit-scrollbar{display:none;}
+  /* gallery: per-day boxes with bird cards */
+  .daybox{margin-bottom:16px;}
+  .daybox .dlabel{font-size:15px;font-weight:600;color:var(--sec);margin:0 4px 8px;text-transform:uppercase;letter-spacing:.5px;}
+  .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+  .bcard{background:var(--card);border-radius:16px;padding:8px;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .bcard img{width:100%;height:78px;object-fit:cover;border-radius:11px;background:var(--card2);}
+  .bcard .bn{font-size:calc(14px*var(--ts));font-weight:600;text-align:center;line-height:1.15;
+    max-height:2.4em;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;}
+  .bcard .bc{font-size:16px;font-weight:700;color:var(--green);}
+  /* live view */
+  #live .lwrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;text-align:center;}
+  #live .rec{display:flex;align-items:center;gap:10px;color:#ff453a;font-size:18px;font-weight:600;}
+  #live .recdot{width:14px;height:14px;border-radius:50%;background:#ff453a;animation:pulse2 1.3s infinite;}
+  @keyframes pulse2{0%,100%{opacity:1}50%{opacity:.25}}
+  #live .lphoto{width:210px;height:160px;object-fit:contain;border-radius:18px;background:var(--card);}
+  #live .lname{font-size:calc(32px*var(--ts));font-weight:700;letter-spacing:-.02em;line-height:1.05;
+    white-space:normal;text-align:center;padding:0 16px;max-width:96%;}
+  #live .lsci{font-size:calc(19px*var(--ts));font-style:italic;color:var(--sec);}
+  #live .lconf{font-size:calc(17px*var(--ts));color:var(--sec);margin-top:2px;}
+  #live .lwait{font-size:22px;color:var(--sec);}
+  /* settings */
+  .srow{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:16px 6px;border-bottom:1px solid var(--hair);}
+  .srow .sk{font-size:calc(19px*var(--ts));font-weight:600;}
+  .seg2{display:flex;flex-wrap:wrap;background:var(--card);border-radius:12px;padding:4px;gap:4px;}
+  .seg2 button{background:transparent;color:var(--fg);border:none;font-size:calc(17px*var(--ts));font-weight:600;
+    padding:13px 24px;border-radius:9px;font-family:inherit;}
+  .khi{outline:3px solid var(--green);outline-offset:1px;}
+  .bwrap{display:flex;align-items:center;gap:10px;width:100%;flex-wrap:wrap;}
+  .slider{flex:1;min-width:140px;height:30px;background:var(--card);border-radius:15px;overflow:hidden;}
+  .bfill{height:100%;background:var(--green);border-radius:15px;transition:width .12s ease;}
+  .slider.active{outline:3px solid #ff9f0a;outline-offset:2px;}
+  .slider.active .bfill{background:#ff9f0a;}
+  .mtl{font-size:calc(16px*var(--ts));font-weight:600;margin-top:8px;}
+  .mtv{color:var(--sec);font-weight:400;}
+  .mtbar{flex:0 0 auto;width:100%;min-width:0;height:36px;margin-top:8px;border-radius:18px;
+    background:var(--card);box-shadow:inset 0 0 0 2px var(--hair);}
+  .mtbar .bfill{border-radius:18px;}
+  body.light .mtbar{box-shadow:inset 0 0 0 2px rgba(0,0,0,.18);}
+  /* clap switch picker */
+  .clsw{display:block;width:100%;text-align:left;margin:6px 0;padding:14px 16px;border-radius:12px;
+    background:var(--card);color:var(--fg);border:2px solid transparent;font-size:calc(17px*var(--ts));
+    font-weight:600;font-family:inherit;}
+  .clsw.on{border-color:var(--green);}
+  .clsw .csid{color:var(--sec);font-weight:400;font-size:.82em;}
+  .clmeter{height:26px;background:var(--card);border-radius:13px;overflow:hidden;box-shadow:inset 0 0 0 2px var(--hair);}
+  .clmeter .bfill{transition:width .1s linear;}
+  /* embedded as the Home Assistant "Clap Lights" page (opened at /#clap): show only the
+     clap UI — hide the Car Thing nav remote and the Back button so it reads as its own page. */
+  body.embed-clap #hanav,body.embed-clap #clapview .vclose{display:none;}
+  /* pull-to-refresh pill: swipe down from the top to reload */
+  #ptr{position:fixed;top:6px;left:50%;transform:translate(-50%,0);background:var(--card);color:var(--fg);
+    padding:10px 20px;border-radius:22px;opacity:0;z-index:99998;transition:opacity .15s;font-size:16px;
+    pointer-events:none;box-shadow:0 4px 18px rgba(0,0,0,.4);}
+  /* On-screen remote — shown ONLY when the dashboard is embedded (Home Assistant / a browser iframe),
+     so you can scroll and switch views without the Car Thing's physical buttons. Hidden on the CT itself. */
+  #hanav{position:fixed;left:0;bottom:0;width:800px;height:46px;display:none;z-index:100000;
+    background:rgba(18,18,20,.92);border-top:1px solid rgba(255,255,255,.14);}
+  #hanav button{flex:1;height:46px;background:transparent;border:0;color:#fff;font-size:16px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:inherit;}
+  #hanav button:active{background:rgba(255,255,255,.18);}
+  #hanav button+button{border-left:1px solid rgba(255,255,255,.09);}
+  body.embedded #hanav{display:flex;}
+  body.embedded #app{height:434px;grid-template-rows:var(--toph) calc(434px - var(--toph));}
+  body.embedded #facts,body.embedded #wxset,body.embedded .view{bottom:46px;}
+  .bbtn{background:var(--card2);border:none;color:var(--fg);font-size:calc(22px*min(var(--ts),1.3));font-weight:700;
+    width:56px;min-height:46px;height:auto;border-radius:11px;font-family:inherit;flex:0 0 auto;line-height:1.1;padding:11px 0;
+    display:flex;align-items:center;justify-content:center;}
+  .seg2 button.on{background:var(--card2);}
+  .chart{display:flex;align-items:flex-end;gap:3px;height:120px;padding:10px 6px 0;}
+  .chart .bar{flex:1;background:var(--green);border-radius:4px 4px 0 0;min-height:2px;opacity:.85;}
+  .chart .bar.peak{opacity:1;}
+  .xax{display:flex;gap:3px;padding:4px 6px 0;}
+  .xax span{flex:1;text-align:center;font-size:11px;color:var(--sec);}
+  .about{font-size:17px;color:var(--sec);line-height:1.7;padding:10px 6px;}
+  .about b{color:var(--fg);font-weight:600;}
+  /* keep the pinned 42px top bar clear on every full-screen overlay */
+  #facts,#wxset,.view{padding-top:42px;}
+  /* SPOTIFY now-playing view */
+  #spotify .sp{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;padding:6px 24px 24px;text-align:center;}
+  .spArt{width:190px;height:190px;border-radius:20px;background:#1c1c1e center/cover no-repeat;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);flex:0 0 auto;}
+  .spTitle{font-size:calc(26px*min(var(--ts),1.4));font-weight:700;letter-spacing:-.02em;
+    max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .spArtist{font-size:calc(18px*min(var(--ts),1.3));color:var(--sec);font-weight:500;margin-top:-6px;}
+  .spBar{width:100%;max-width:420px;height:6px;background:var(--card);border-radius:3px;overflow:hidden;}
+  .spFill{height:100%;width:0;background:var(--green);border-radius:3px;transition:width .9s linear;}
+  .spTimes{width:100%;max-width:420px;display:flex;justify-content:space-between;
+    font-size:13px;color:var(--sec);font-variant-numeric:tabular-nums;margin-top:-6px;}
+  .spCtl{display:flex;align-items:center;gap:26px;margin-top:4px;}
+  .spVol{display:flex;align-items:center;gap:12px;width:100%;max-width:320px;justify-content:center;}
+  .spBtn{background:var(--card);border:none;color:var(--fg);font-size:26px;width:62px;height:54px;
+    border-radius:14px;font-family:inherit;transition:transform .14s ease,background .2s ease;}
+  .spBtn:active{transform:scale(.94);background:var(--card2);}
+  .spBtn.big{font-size:30px;width:78px;height:62px;background:var(--green);color:#000;}
+  .spBtn.sm{font-size:20px;width:50px;height:44px;}
+  /* fluid press feedback */
+  .item,.bcard,.stat,.seg2 button,.seg button,.key,.fclose,.vclose,.wclose{transition:transform .14s ease,background .2s ease;}
+  .item:active,.bcard:active,.stat:active,.seg2 button:active,.seg button:active,.key:active,.fclose:active,.vclose:active,.wclose:active{transform:scale(.97);}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="wx" id="wx" onclick="openWx()"><span id="wxIcon"></span><span id="wxTemp">--°</span></div>
+    <div class="np" id="np" onclick="openSpotify()" style="display:none"><span class="npico">♫</span><span id="npText"></span></div>
+    <div class="tr"><div id="date" onclick="openYear()"></div><div class="live"><div class="dot"></div><span id="liveTxt">Live</span></div><div id="clock" onclick="openClock()">--:--</div></div>
+  </div>
+  <div class="hero" id="hero" onclick="openFacts()">
+    <div class="bg" id="heroBg"></div>
+    <div class="photo" id="heroPhoto"></div>
+    <div class="empty" id="heroEmpty"><div class="big">🐦</div><div>Listening…</div></div>
+    <div class="meta" id="heroMeta" style="display:none">
+      <div class="com" id="heroCom"></div>
+      <div class="sci" id="heroSci"></div>
+      <div class="row"><span class="pill" id="heroConf"></span><span class="when" id="heroWhen"></span></div>
+    </div>
+  </div>
+  <aside>
+    <div class="stats">
+      <div class="stat"><div class="n" id="stCount">0</div><div class="l">Today</div></div>
+      <div class="stat"><div class="n" id="stSpecies">0</div><div class="l">Species</div></div>
+    </div>
+    <div id="list"></div>
+  </aside>
+</div>
+<div id="facts">
+  <div class="brand">Bird<span>Thing</span></div>
+  <div class="fhead">
+    <img class="fphoto" id="fPhoto" alt="">
+    <div><div class="ftitle" id="fTitle"></div><div class="fsci" id="fSci"></div></div>
+    <div class="fplay" id="fPlay" onclick="playSong()">▶ Play call</div>
+    <div class="fclose" onclick="closeFacts()">Back</div>
+  </div>
+  <audio id="songAudio" preload="none"></audio>
+  <div class="fbody" id="fBody">Loading…</div>
+</div>
+<div id="wxset">
+  <div class="wtitle">Weather</div>
+  <div class="wrow">
+    <span class="lbl">Units</span>
+    <div class="seg"><button id="unitC" onclick="setUnit('C')">°C</button><button id="unitF" onclick="setUnit('F')">°F</button></div>
+    <span class="lbl" style="margin-left:8px">Location</span>
+    <div class="qbox" id="qbox">Type a city…</div>
+    <div class="wclose" onclick="closeWx()">Done</div>
+  </div>
+  <div id="wxResults"></div>
+  <div id="kb"></div>
+</div>
+<div id="gallery" class="view">
+  <div class="vhead"><div class="vtitle">Birds</div><div class="vclose" onclick="closeView('gallery')">Back</div></div>
+  <div class="vbody" id="galBody"></div>
+</div>
+<div id="live" class="view" style="background:#000">
+  <iframe id="wxFrame" tabindex="-1" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>
+  <div class="lwrap" style="display:none"><canvas id="spec" width="1" height="1"></canvas><img id="liveImg" alt=""><div id="liveName"></div><div id="liveSci"></div><div id="liveConf"></div></div>
+</div>
+<div id="spotify" class="view">
+  <div class="vhead"><div class="vtitle">Spotify</div><div class="vclose" onclick="closeView('spotify')">Back</div></div>
+  <div class="sp">
+    <div class="spArt" id="spArt"></div>
+    <div class="spTitle" id="spTitle">Spotify not connected</div>
+    <div class="spArtist" id="spArtist"></div>
+    <div class="spBar"><div class="spFill" id="spFill"></div></div>
+    <div class="spTimes"><span id="spPos">0:00</span><span id="spDur">0:00</span></div>
+    <div class="spCtl">
+      <button class="spBtn" onclick="spCmd('prev')">⏮</button>
+      <button class="spBtn big" id="spPlay" onclick="spCmd('playpause')">▶</button>
+      <button class="spBtn" onclick="spCmd('next')">⏭</button>
+    </div>
+    <div class="spVol"><button class="spBtn sm" onclick="spVol(-10)">🔉</button><div class="slider" style="max-width:240px;height:30px"><div class="bfill" id="spVolFill"></div></div><button class="spBtn sm" onclick="spVol(10)">🔊</button></div>
+    <div class="about" id="spHint" style="text-align:center;padding-top:0"></div>
+  </div>
+</div>
+<div id="settings" class="view">
+  <div class="vhead"><div class="vtitle">Settings</div><div class="vclose" onclick="closeView('settings')">Back</div></div>
+  <div class="vbody">
+    <div class="srow"><span class="sk">Text size</span>
+      <div class="seg2"><button onclick="setTs(0.9)" data-ts="0.9">Small</button><button onclick="setTs(1)" data-ts="1">Medium</button><button onclick="setTs(1.15)" data-ts="1.15">Large</button><button onclick="setTs(1.7)" data-ts="1.7">XL</button><button onclick="setTs(2.2)" data-ts="2.2">XXL</button></div></div>
+    <div class="srow" style="border:none;padding-top:2px"><span class="about" style="padding:0">XL is an accessibility size — enlarges every label (bird name, time, date, weather) to read from across the room.</span></div>
+    <div class="srow"><span class="sk">Appearance</span>
+      <div class="seg2"><button onclick="setTheme('dark')" data-th="dark">Dark</button><button onclick="setTheme('light')" data-th="light">Light</button></div></div>
+    <div class="srow"><span class="sk">Brightness <span id="bpct" style="color:var(--sec);font-weight:400"></span></span>
+      <div class="bwrap"><button class="bbtn" id="bAuto" style="width:auto;padding:13px 14px" onclick="setAuto(!brightAuto)">Auto</button><button class="bbtn" onclick="brightStep(-10)">−</button>
+        <div class="slider" id="bbar" onclick="brightTap(event)"><div class="bfill" id="bfill"></div></div>
+        <button class="bbtn" onclick="brightStep(10)">+</button></div>
+      <span class="about" style="padding:2px 4px 0">Knob: scroll to the bar, <b>press to activate</b> (turns orange), turn to dim/brighten, press again to finish · or tap the bar.</span></div>
+    <div class="srow"><span class="sk">Music</span>
+      <div class="seg2"><button onclick="openSpotify()">Open Spotify</button></div></div>
+    <div class="srow"><span class="sk">Analytics</span>
+      <div class="seg2"><button onclick="openAnalytics()">Open today's report</button></div></div>
+    <div class="srow"><span class="sk">Wi‑Fi</span>
+      <div class="seg2"><button onclick="openWifi()">Change network</button></div></div>
+    <div class="srow"><span class="sk">Clap control</span>
+      <div class="seg2"><button onclick="openClap()">Clap → lights settings</button></div>
+      <span class="about" style="padding:4px 4px 0">Clap twice to toggle chosen lights/switches. Adjust sensitivity &amp; pick switches here.</span></div>
+    <div class="srow"><span class="sk">Bird region</span>
+      <div class="seg2"><button id="regAuto" onclick="detectLoc()">Auto‑detect</button><button data-reg="New York" onclick="setLoc(40.7128,-74.0060,'New York')">New York</button><button data-reg="North America" onclick="setLoc(39.83,-98.58,'North America')">N. America</button><button data-reg="UK" onclick="setLoc(51.51,-0.13,'UK')">UK</button><button data-reg="India" onclick="setLoc(20.59,78.96,'India')">India</button><button data-reg="Australia" onclick="setLoc(-25.27,133.78,'Australia')">Australia</button></div></div>
+    <div class="srow"><span class="sk">Geo filter — precision vs. catch‑all</span>
+      <div class="seg2"><button data-sf="0.08" onclick="setSf(0.08)">Strict</button><button data-sf="0.03" onclick="setSf(0.03)">Loose</button><button data-sf="0" onclick="setSf(0)">Off (catch‑all)</button></div>
+      <span class="about" id="locNote" style="padding:4px 4px 0"></span></div>
+    <div class="srow"><span class="sk">Microphone &amp; bird ID</span>
+      <span class="about" style="padding:0 0 2px">Tune what the Car Thing mic hears and how sure BirdNET must be. Changes apply live (analyzer restarts, ~5 s).</span>
+      <div class="mtl">Mic sensitivity <span class="mtv" id="mtGainV"></span></div>
+      <div class="slider mtbar" id="mtGain"><div class="bfill" id="mtGainF"></div></div>
+      <div class="mtl">Noise gate <span class="mtv" id="mtGateV"></span></div>
+      <div class="slider mtbar" id="mtGate"><div class="bfill" id="mtGateF"></div></div>
+      <div class="mtl">Rumble filter <span class="mtv" id="mtHpV"></span></div>
+      <div class="seg2"><button data-hp="1" onclick="mtHp(1)">On</button><button data-hp="0" onclick="mtHp(0)">Off</button></div>
+      <div class="mtl">ID strictness <span class="mtv" id="mtConfV"></span></div>
+      <div class="slider mtbar" id="mtConf"><div class="bfill" id="mtConfF"></div></div>
+      <div class="about" id="mtStatus" style="padding:4px 0 0"></div></div>
+    <div class="srow"><span class="sk">Room presence sensitivity</span>
+      <span class="about" style="padding:0 0 2px">How easily the ESP32 presence sensor notices you (it turns the lights on). These are the same sliders as in the Home Assistant app — change either one and both stay in sync. Higher = reacts to smaller movements, but may also false‑trigger.</span>
+      <div class="mtl">Bedroom <span class="mtv" id="psBedV"></span></div>
+      <div class="slider mtbar" id="psBed"><div class="bfill" id="psBedF"></div></div>
+      <div class="mtl">Living room <span class="mtv" id="psLivV"></span></div>
+      <div class="slider mtbar" id="psLiv"><div class="bfill" id="psLivF"></div></div>
+      <div class="about" id="psStatus" style="padding:4px 0 0"></div></div>
+    <div class="srow" style="border:none;flex-direction:column;align-items:flex-start;gap:8px">
+      <span class="sk">Today's activity</span>
+      <div class="chart" id="chart" style="width:100%"></div>
+      <div class="xax" id="xax" style="width:100%"></div>
+    </div>
+    <div class="about" id="about"></div>
+  </div>
+</div>
+<div id="analytics" class="view">
+  <div class="vhead"><div class="vtitle">Analytics</div><div class="vclose" onclick="closeView('analytics')">Back</div></div>
+  <div class="vbody" id="anBody">Loading…</div>
+</div>
+<div id="wifi" class="view">
+  <div class="vhead"><div class="vtitle">Wi‑Fi</div><div class="vclose" onclick="closeView('wifi')">Back</div></div>
+  <div class="vbody">
+    <div class="about" id="wifiCur" style="padding:0 4px 10px">Scanning…</div>
+    <div id="wifiList"></div>
+    <div id="wifiPanel" style="display:none">
+      <div style="display:flex;align-items:center;gap:10px;margin:10px 4px">
+        <span class="sk" id="wifiSsid"></span>
+        <span class="qbox" id="wifiPass" style="flex:1">password</span>
+        <div class="key" id="wifiEye" style="flex:0 0 auto;padding:13px 16px" onclick="toggleWpass()">show</div>
+        <div class="key" style="flex:0 0 auto;padding:13px 22px;background:var(--green);color:#000" onclick="wifiConnect()">Connect</div>
+      </div>
+      <div id="wkb" style="display:flex;flex-direction:column;gap:7px"></div>
+    </div>
+  </div>
+</div>
+<div id="clapview" class="view">
+  <div class="vhead"><div class="vtitle">Clap → lights &amp; TV</div><div class="vclose" onclick="closeView('clapview')">Back</div></div>
+  <div class="vbody">
+    <div class="about" style="padding:0 4px 8px">Clap twice to toggle what you pick below — with separate choices for daytime and for the evening. It listens on the same mic as the birds — this <b>never</b> affects bird ID.</div>
+    <div class="srow"><span class="sk">Clap detection</span>
+      <div class="seg2"><button data-clen="1" onclick="clEnable(1)">On</button><button data-clen="0" onclick="clEnable(0)">Off</button></div></div>
+    <div class="srow"><span class="sk">Detection mode</span>
+      <div class="seg2"><button data-clmode="smart" onclick="clMode('smart')">Smart</button><button data-clmode="amplitude" onclick="clMode('amplitude')">Simple</button></div>
+      <span class="about" id="clModeNote" style="padding:4px 4px 0"></span></div>
+    <div class="srow"><span class="sk">Only after sunset</span>
+      <div class="seg2"><button data-clss="1" onclick="clSunset(1)">On</button><button data-clss="0" onclick="clSunset(0)">Off</button></div>
+      <span class="about" id="clSunNote" style="padding:4px 4px 0"></span></div>
+    <div class="srow" id="clPreRow"><span class="sk">Start 30 min before sunset</span>
+      <div class="seg2"><button data-clpre="1" onclick="clPre(1)">On</button><button data-clpre="0" onclick="clPre(0)">Off</button></div>
+      <span class="about" style="padding:4px 4px 0">Lets claps work in the half‑hour before sunset. The window still ends at sunrise. Only applies when “Only after sunset” is on.</span></div>
+    <div class="srow" style="gap:6px">
+      <span class="sk">Live meter <span class="mtv" id="clLive"></span></span>
+      <div class="clmeter" style="width:100%"><div class="bfill" id="clMeterPk" style="width:0"></div></div>
+      <span class="about" id="clHint" style="padding:2px 4px 0">Clap now — the bar should jump near the top.</span></div>
+    <div class="srow" style="gap:4px">
+      <div class="mtl">Sensitivity <span class="mtv" id="clSensV"></span></div>
+      <div class="slider mtbar" id="clSens"><div class="bfill" id="clSensF"></div></div>
+      <span class="about" style="padding:2px 0 0">Higher = easier to trigger (but more likely to fire on other loud, sharp sounds). <b>If claps stopped working, nudge this up.</b></span>
+      <div class="mtl">Boost <span class="mtv" id="clBoostV"></span></div>
+      <div class="slider mtbar" id="clBoost"><div class="bfill" id="clBoostF"></div></div>
+      <span class="about" style="padding:2px 0 0">Amplifies the clap signal for a quiet room or a far‑away mic.</span></div>
+    <div class="srow" style="gap:6px">
+      <span class="sk">Toggle in the evening &amp; at night</span>
+      <span class="about" style="padding:0 0 2px">Tap to choose what a double clap toggles once the sunset window opens — you can pick more than one.</span>
+      <div id="clSwitches" style="width:100%">Loading…</div>
+      <div class="seg2" style="margin-top:6px"><button onclick="clTest()">Test — toggle now</button></div></div>
+    <div class="srow" style="gap:6px">
+      <span class="sk">Toggle during the day</span>
+      <span class="about" style="padding:0 0 2px">What a double clap toggles from sunrise until the sunset window opens — e.g. the TV in the morning. Leave everything unpicked to have daytime claps do nothing. <b>For an Apple TV pick the <code>media_player.</code> entry</b> — it powers on and off reliably (the <code>remote.</code> one turns it off but can't wake it back up).</span>
+      <div id="clDaySwitches" style="width:100%">Loading…</div>
+      <div class="seg2" style="margin-top:6px"><button onclick="clTest('day')">Test — toggle now</button></div></div>
+    <div class="srow" style="gap:4px">
+      <div class="mtl">Double‑clap window <span class="mtv" id="clDblV"></span></div>
+      <div class="slider mtbar" id="clDbl"><div class="bfill" id="clDblF"></div></div>
+      <div class="mtl">Cooldown after a toggle <span class="mtv" id="clCoolV"></span></div>
+      <div class="slider mtbar" id="clCool"><div class="bfill" id="clCoolF"></div></div></div>
+    <div class="about" id="clStatus" style="padding:6px 4px 0"></div>
+  </div>
+</div>
+<div id="clockview" class="view">
+  <div class="vhead"><div class="vtitle">Clock</div><div class="vclose" onclick="closeView('clockview')">Back</div></div>
+  <div class="vbody" style="display:flex;align-items:center;justify-content:center;padding:6px 22px;overflow:hidden;">
+   <div id="clockWrap" style="display:flex;align-items:center;justify-content:center;gap:34px;width:max-content;flex:0 0 auto;">
+    <svg id="anaClock" viewBox="0 0 200 200" style="height:300px;flex:0 0 auto;aspect-ratio:1;">
+      <circle cx="100" cy="100" r="97" fill="var(--card)" stroke="var(--hair)" stroke-width="2"/>
+      <g id="anaTicks"></g>
+      <line id="anaH" x1="100" y1="100" x2="100" y2="56" stroke="var(--fg)" stroke-width="7" stroke-linecap="round"/>
+      <line id="anaM" x1="100" y1="100" x2="100" y2="32" stroke="var(--fg)" stroke-width="4" stroke-linecap="round"/>
+      <line id="anaS" x1="100" y1="106" x2="100" y2="26" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="100" cy="100" r="5" fill="var(--green)"/>
+    </svg>
+    <div style="text-align:center;flex:0 0 auto;">
+      <div id="digTime" style="font-size:62px;font-weight:800;letter-spacing:-.02em;"></div>
+      <div id="digDate" style="font-size:21px;color:var(--sec);margin-top:6px;"></div>
+    </div>
+    <div id="monthCal" style="flex:0 0 auto;"></div>
+   </div>
+  </div>
+</div>
+<div id="yearview" class="view">
+  <div class="vhead"><div class="vtitle" id="yearTitle">Year</div><div class="vclose" onclick="closeView('yearview')">Back</div></div>
+  <div class="vbody" id="yearBody" style="display:flex;justify-content:center;align-items:center;padding:4px 18px 14px;overflow:hidden;"></div>
+</div>
+<div id="hanav">
+  <button onclick="hk('Escape')">Home</button>
+  <button onclick="hk('ArrowUp')">▲</button>
+  <button onclick="hk('ArrowDown')">▼</button>
+  <button onclick="hk('Enter')">Select</button>
+  <button onclick="hk('2')">Birds</button>
+  <button onclick="hk('3')">Live</button>
+  <button onclick="hk('4')">Settings</button>
+</div>
+<script>
+const VERSION="1.0 (USB)";
+const CT="http://127.0.0.1:8091";
+// 'm' (last top button) = simple display on/off toggle.
+let dispOff=false;
+function toggleDisplay(){dispOff=!dispOff;fetch(CT+"/display?on="+(dispOff?0:1)).catch(()=>{});}
+const IMG=n=>"/api/image?name="+encodeURIComponent(n);
+let rows=[],sel=0,follow=true,factsOpen=false,heroTok=0,lastHeroUrl='',lastDetAt=0;
+// two-stage live indicator: "Listening…" the instant sound is heard, "Hearing a bird…" once BirdNET
+// positively IDs it. noiseFloor adapts to ambient (snaps down to quiet, creeps up slowly) so the
+// sound threshold works day or night; soundUntil holds "Listening…" briefly so it doesn't flicker.
+let noiseFloor=40,soundUntil=0;
+let brightPct=parseInt(localStorage.getItem('brightPct')||'70')||70,brightAuto=localStorage.getItem('brightAuto')==='1',_lastAutoLvl=-1;
+let luLat=null,luLon=null,luCloud=null;   // device lat/lon + cloud%, from /api/weather (for solar auto-brightness)
+const AB_DAY=100,AB_NIGHT=12,AB_HI=8,AB_LO=-6;   // full bright above +8deg sun elevation, night floor below -6deg
+// Clock/date come from the Pi (authoritative NTP time): the Car Thing has no RTC/NTP
+// and a wrong system clock + timezone, so we never trust the browser's local Date.
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let srvOffMs=null;            // server-UTC minus local Date.now()
+let tzOffMin=-(new Date().getTimezoneOffset()); // until first server sync
+function setSrvTime(nowMs,tzoff){srvOffMs=nowMs-Date.now();if(typeof tzoff==='number')tzOffMin=tzoff;}
+function tick(){
+  const base=(srvOffMs!=null?Date.now()+srvOffMs:Date.now())+tzOffMin*60000;
+  const d=new Date(base); // shifted so UTC getters read Pi-local wall clock
+  let h=d.getUTCHours();const ap=h<12?'AM':'PM';const hh=(h%12)||12;
+  document.getElementById('clock').textContent=hh+':'+String(d.getUTCMinutes()).padStart(2,'0')+' '+ap;
+  document.getElementById('date').textContent=DAYS[d.getUTCDay()]+', '+MON[d.getUTCMonth()]+' '+d.getUTCDate();
+  const lt=document.getElementById('liveTxt');
+  if(lt)lt.textContent=(Date.now()-lastDetAt<6000)?'Hearing a bird…':(Date.now()<soundUntil?'Listening…':'Live');
+  if(typeof updClock==='function')updClock();   // live analog/digital clock when the view is open
+  autoApply();}
+setInterval(tick,1000);tick();
+// detection timestamps -> 12-hour to match the top clock
+function fmt12(t){if(!t)return'';const p=t.split(':'),m=p[1]||'00';let h=+p[0];const ap=h<12?'AM':'PM';h=h%12;if(h===0)h=12;return h+':'+m+' '+ap;}
+function renderHero(){
+  const m=document.getElementById('heroMeta'),e=document.getElementById('heroEmpty');
+  if(!rows.length){m.style.display='none';e.style.display='flex';return;}
+  e.style.display='none';m.style.display='block';
+  const b=rows[sel]||rows[0];
+  document.getElementById('heroCom').textContent=b.com;
+  document.getElementById('heroSci').textContent=b.sci||'';
+  document.getElementById('heroConf').textContent=Math.round(b.conf*100)+'%';
+  document.getElementById('heroWhen').textContent=fmt12(b.time)+(follow&&sel===0?' · Live':'');
+  const url=IMG(b.com);
+  // only reload the photo when the bird actually changes (otherwise the 1s refresh re-triggers
+  // the fade every tick = blinking). Preload + crossfade in once it's ready.
+  if(url!==lastHeroUrl){
+    lastHeroUrl=url;
+    heroTok++;const tok=heroTok,hp=document.getElementById('heroPhoto'),hb=document.getElementById('heroBg');
+    hp.style.opacity='.3';
+    const pre=new Image();
+    pre.onload=()=>{if(tok!==heroTok)return;hp.style.backgroundImage=`url('${url}')`;hb.style.backgroundImage=`url('${url}')`;hp.style.opacity='1';};
+    pre.onerror=()=>{if(tok!==heroTok)return;hp.style.opacity='1';};
+    pre.src=url;
+  }
+}
+function renderList(){
+  const L=document.getElementById('list');L.innerHTML='';
+  rows.forEach((x,i)=>{
+    const it=document.createElement('div');it.className='item'+(i===sel?' sel':'');
+    it.innerHTML=`<img class="th" src="${IMG(x.com)}" onerror="this.style.visibility='hidden'">
+      <div class="info"><div class="nm">${x.com}</div><div class="tm">${fmt12(x.time)}</div></div>
+      <div class="cf">${Math.round(x.conf*100)}%</div>`;
+    it.onclick=()=>{sel=i;follow=(i===0);renderHero();renderList();openFacts();};
+    L.appendChild(it);
+  });
+  const cur=L.children[sel];if(cur)cur.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+async function refresh(){
+  try{
+    const d=await (await fetch('/api/detections',{cache:'no-store'})).json();
+    if(d.now)setSrvTime(d.now,d.tzoff);
+    if(typeof d.level==='number'){                         // live mic loudness -> "Listening…"
+      noiseFloor=Math.min(d.level,noiseFloor+3);           // track ambient: snap to quiet, creep up
+      if(d.level>Math.max(200,noiseFloor*4))soundUntil=Date.now()+2200;
+    }
+    document.getElementById('stCount').textContent=d.today_count||0;
+    document.getElementById('stSpecies').textContent=d.today_species||0;
+    const nr=d.rows||[];
+    const nk=nr.length?nr[0].time+nr[0].com:'';
+    if(nk&&nk!==lastLiveKey){lastLiveKey=nk;specEnergy=1;lastDetAt=Date.now();}   // fresh ID -> pulse + "hearing a bird"
+    rows=nr;
+    if(follow)sel=0;
+    if(document.getElementById('live').classList.contains('show'))renderLive();
+    if(!curOverlay()){renderHero();renderList();}
+  }catch(e){}
+}
+refresh();setInterval(refresh,1000);
+// Deep-link: opening this page at /#clap jumps straight to the Clap control page.
+// The Home Assistant "Clap Lights" dashboard embeds .../#clap in an iframe.
+function clapDeepLink(){if((location.hash||'').toLowerCase().replace('#','')==='clap'){document.body.classList.add('embed-clap');try{openClap();}catch(_){}}}
+addEventListener('hashchange',clapDeepLink);setTimeout(clapDeepLink,250);
+function move(delta){
+  if(!rows.length)return;
+  follow=false;sel=Math.max(0,Math.min(rows.length-1,sel+delta));
+  if(sel===0)follow=true;
+  renderHero();renderList();
+}
+function goLive(){follow=true;sel=0;closeFacts();renderHero();renderList();}
+let curSci='',curCom='',songPlaying=false;
+// Plays on the PI's audio out (so a Bluetooth speaker on the Pi makes the sound) — the Car Thing
+// has no speaker. Needs a Xeno-canto API key in /opt/birdthing/xenocanto.key.
+function playSong(){
+  const btn=document.getElementById('fPlay');
+  if(songPlaying){fetch('/api/stop_pi').catch(()=>{});songPlaying=false;btn.textContent='▶ Play call';return;}
+  btn.textContent='Loading…';
+  fetch('/api/play_pi?name='+encodeURIComponent(curSci||curCom)).then(r=>r.json()).then(d=>{
+    if(d.ok){songPlaying=true;btn.textContent='⏸ Stop';}
+    else btn.textContent=(d.err==='no-key')?'Set API key':'No recording';
+  }).catch(()=>{btn.textContent='▶ Play call';});
+}
+async function openFactsFor(com,sci){
+  factsOpen=true;curCom=com;curSci=sci||'';songPlaying=false;
+  document.getElementById('fPlay').textContent='▶ Play call';
+  document.getElementById('fTitle').textContent=com;
+  document.getElementById('fSci').textContent=sci||'';
+  document.getElementById('fPhoto').src=IMG(com);
+  document.getElementById('fBody').textContent='Loading…';
+  document.getElementById('facts').classList.add('show');
+  try{
+    const info=await (await fetch('/api/info?name='+encodeURIComponent(com))).json();
+    document.getElementById('fBody').textContent=info.extract||'No facts available for this bird.';
+  }catch(e){document.getElementById('fBody').textContent='No facts available (offline).';}
+}
+function openFacts(){if(!rows.length)return;const b=rows[sel];openFactsFor(b.com,b.sci);}
+function closeFacts(){factsOpen=false;document.getElementById('facts').classList.remove('show');
+  if(songPlaying){fetch('/api/stop_pi').catch(()=>{});songPlaying=false;}}
+document.getElementById('facts').onclick=(e)=>{if(e.target.id==='facts')closeFacts();};
+function factsScroll(d){document.getElementById('fBody').scrollBy({top:d*90,behavior:'smooth'});}
+function btnNav(k){ // top buttons 1-4 switch views from anywhere
+  const cur=curOverlay();
+  if(k==='1'){cur?closeAllOverlays():openFacts();return true;}
+  if(k==='2'){cur==='gallery'?closeAllOverlays():openGallery();return true;}
+  if(k==='3'){cur==='live'?closeAllOverlays():openLive();return true;}
+  if(k==='4'){cur==='settings'?closeAllOverlays():openSettings();return true;}
+  return false;
+}
+document.addEventListener('keydown',(ev)=>{
+  const k=ev.key;
+  // arrows are handled explicitly below (nav / slider / manual scroll) — stop the browser's
+  // own arrow-key scrolling so adjusting the brightness slider doesn't also scroll the view
+  if(k==='ArrowDown'||k==='ArrowUp'||k==='ArrowLeft'||k==='ArrowRight')ev.preventDefault();
+  if(k==='m'||k==='M'){if(!ev.repeat)toggleDisplay();return;}
+  if(document.getElementById('wxset').classList.contains('show')){if(k==='Escape'||k==='Backspace')closeWx();return;}
+  if(btnNav(k))return;
+  if(factsOpen){
+    if(k==='ArrowDown'||k==='ArrowRight')factsScroll(1);
+    else if(k==='ArrowUp'||k==='ArrowLeft')factsScroll(-1);
+    else if(k==='Escape'||k==='Backspace'||k==='Enter')closeFacts();
+    return;
+  }
+  const v=curOverlay();
+  if(v){
+    if(v==='settings'){
+      const o=setOpts()[setSel];
+      const onSlider=o&&o.classList.contains('slider');
+      if(onSlider&&sliderActive){              // ACTIVE: knob turns adjust THIS slider (brightness or a mic bar)
+        if(k==='Enter'||k==='Escape'||k==='Backspace'){sliderActive=false;o.classList.remove('active');return;}
+        const dir=(k==='ArrowDown'||k==='ArrowRight')?1:(k==='ArrowUp'||k==='ArrowLeft')?-1:0;
+        if(dir){if(o.id==='bbar')brightStep(dir*5);else mtKnob(o.id,dir);}
+        return;
+      }
+      if(k==='ArrowDown'||k==='ArrowRight')setMove(1);   // normal scroll = navigate (incl. past slider)
+      else if(k==='ArrowUp'||k==='ArrowLeft')setMove(-1);
+      else if(k==='Enter'){if(onSlider){sliderActive=true;o.classList.add('active');}else if(o)o.click();}
+      else if(k==='Escape'||k==='Backspace')closeView('settings');
+      return;
+    }
+    if(v==='spotify'){
+      if(k==='ArrowRight')spCmd('next');
+      else if(k==='ArrowLeft')spCmd('prev');
+      else if(k==='ArrowDown')spVol(-5);
+      else if(k==='ArrowUp')spVol(5);
+      else if(k==='Enter')spCmd('playpause');
+      else if(k==='Escape'||k==='Backspace')closeView('spotify');
+      return;
+    }
+    const body=document.querySelector('#'+v+' .vbody');
+    if(k==='ArrowDown'||k==='ArrowRight'){if(body)body.scrollBy({top:110,behavior:'smooth'});}
+    else if(k==='ArrowUp'||k==='ArrowLeft'){if(body)body.scrollBy({top:-110,behavior:'smooth'});}
+    else if(k==='Escape'||k==='Backspace')closeView(v);
+    return;
+  }
+  if(k==='ArrowDown'||k==='ArrowRight')move(1);
+  else if(k==='ArrowUp'||k==='ArrowLeft')move(-1);
+  else if(k==='Enter')openFacts();
+  else if(k==='Escape'||k==='Backspace')goLive();
+});
+// ---- Views (gallery / live / settings) ----
+function closeAllOverlays(){closeFacts();document.body.classList.remove('wxlive');if(typeof wxFocusT!=='undefined'){clearInterval(wxFocusT);const wf=document.getElementById('wxFrame');if(wf){wf.blur();window.focus();}}['gallery','live','settings','analytics','wifi','spotify','clapview','clockview','yearview'].forEach(id=>document.getElementById(id).classList.remove('show'));}
+function openView(id){closeAllOverlays();document.getElementById(id).classList.add('show');}
+function closeView(id){document.getElementById(id).classList.remove('show');if(id==='live')document.body.classList.remove('wxlive');if(id==='live')clearInterval(wxFocusT);}
+function curOverlay(){if(factsOpen)return'facts';return ['gallery','live','settings','analytics','wifi','spotify','clapview','clockview','yearview'].find(id=>document.getElementById(id).classList.contains('show'));}
+async function openGallery(){openView('gallery');
+  const b=document.getElementById('galBody');b.innerHTML='Loading…';
+  try{
+    const days=await (await fetch('/api/bydate')).json();
+    b.innerHTML='';
+    const today=new Date().toISOString().slice(0,10);
+    const yest=new Date(Date.now()-864e5).toISOString().slice(0,10);
+    days.forEach(d=>{
+      const box=document.createElement('div');box.className='daybox';
+      const lab=d.date===today?'Today':(d.date===yest?'Yesterday':d.date);
+      box.innerHTML=`<div class="dlabel">${lab} · ${d.birds.length} species</div>`;
+      const grid=document.createElement('div');grid.className='grid';
+      d.birds.forEach(x=>{const c=document.createElement('div');c.className='bcard';
+        c.innerHTML=`<img src="${IMG(x.com)}" onerror="this.style.visibility='hidden'"><div class="bn">${x.com}</div><div class="bc">${x.count}×</div>`;
+        c.onclick=()=>openFactsFor(x.com,x.sci);
+        grid.appendChild(c);});
+      box.appendChild(grid);b.appendChild(box);
+    });
+    if(!days.length)b.innerHTML='<div class="about">No birds yet today.</div>';
+  }catch(e){b.innerHTML='<div class="about">Could not load.</div>';}
+}
+// Wi-Fi picker (changes the Pi's network via nmcli through /api/wifi/*)
+let wifiSsid='',wpass='',wshift=false,wreveal=false;
+async function openWifi(){openView('wifi');
+  document.getElementById('wifiPanel').style.display='none';wpass='';wshift=false;
+  const cur=document.getElementById('wifiCur');cur.textContent='Scanning…';
+  try{
+    const s=await (await fetch('/api/wifi',{cache:'no-store'})).json();
+    const list=await (await fetch('/api/wifi/scan',{cache:'no-store'})).json();
+    cur.innerHTML='Connected to <b>'+(s.ssid||'—')+'</b>';
+    const L=document.getElementById('wifiList');L.innerHTML='';
+    if(!list.length)L.innerHTML='<div class="about">No networks found.</div>';
+    list.forEach(n=>{const d=document.createElement('div');d.className='item';
+      d.innerHTML=`<div class="info"><div class="nm">${n.ssid}</div><div class="tm">${n.secure?'secured':'open'}</div></div><div class="cf">${n.signal}</div>`;
+      d.onclick=()=>wifiPick(n);L.appendChild(d);});
+  }catch(e){cur.textContent='Wi‑Fi scan failed';}
+}
+function wifiPick(n){wifiSsid=n.ssid;wpass='';wshift=false;wreveal=false;
+  document.getElementById('wifiSsid').textContent=n.ssid;
+  document.getElementById('wifiPanel').style.display='block';showWpass();buildWkb();}
+function showWpass(){const el=document.getElementById('wifiPass');
+  el.textContent=wpass?(wreveal?wpass:'•'.repeat(wpass.length)):'password';
+  const eye=document.getElementById('wifiEye');if(eye)eye.textContent=wreveal?'hide':'show';}
+function toggleWpass(){wreveal=!wreveal;showWpass();}
+function wkey(ch){wpass+=ch;wshift=false;showWpass();buildWkb();}
+function buildWkb(){const kb=document.getElementById('wkb');kb.innerHTML='';
+  [['1','2','3','4','5','6','7','8','9','0'],...KB].forEach(row=>{
+    const r=document.createElement('div');r.className='krow';
+    row.forEach(ch=>{const k=document.createElement('div');k.className='key';
+      const c=/[A-Z]/.test(ch)?(wshift?ch:ch.toLowerCase()):ch;
+      k.textContent=c;k.onclick=()=>wkey(c);r.appendChild(k);});kb.appendChild(r);});
+  const r=document.createElement('div');r.className='krow';
+  const sh=document.createElement('div');sh.className='key';sh.textContent=wshift?'⇧·ON':'⇧';sh.onclick=()=>{wshift=!wshift;buildWkb();};
+  const sp=document.createElement('div');sp.className='key wide';sp.textContent='space';sp.onclick=()=>wkey(' ');
+  const bs=document.createElement('div');bs.className='key';bs.textContent='⌫';bs.onclick=()=>{wpass=wpass.slice(0,-1);showWpass();};
+  r.appendChild(sh);r.appendChild(sp);r.appendChild(bs);kb.appendChild(r);}
+async function wifiConnect(){const cur=document.getElementById('wifiCur');cur.textContent='Connecting to '+wifiSsid+'…';
+  try{const r=await (await fetch('/api/wifi/connect?ssid='+encodeURIComponent(wifiSsid)+'&psk='+encodeURIComponent(wpass))).json();
+    cur.innerHTML=r.ok?('Connected to <b>'+wifiSsid+'</b> ✓ — detecting location…'):('Failed: '+(r.msg||'error'));
+    if(r.ok){document.getElementById('wifiPanel').style.display='none';detectLoc();}
+  }catch(e){cur.textContent='Connection error';}}
+// Bird region / geographic ID filter
+function setLoc(lat,lon,place){const n=document.getElementById('locNote');n.textContent='Setting region to '+place+'…';
+  fetch('/api/birdloc?lat='+lat+'&lon='+lon+'&place='+encodeURIComponent(place)).then(r=>r.json()).then(d=>{if(!d.ok)n.textContent='Failed to set region';markGeo();}).catch(()=>{n.textContent='Error';});}
+// Persistent region/filter highlight + summary, driven by the SERVER state (birdnet.conf), so it
+// survives reloads and never lies about what the analyzer is actually using.
+async function markGeo(){let st;try{st=await (await fetch('/api/birdstatus',{cache:'no-store'})).json();}catch(e){return;}
+  const regs=[...document.querySelectorAll('[data-reg]')];
+  regs.forEach(b=>b.classList.toggle('on',b.dataset.reg===st.place));
+  const au=document.getElementById('regAuto');
+  if(au)au.classList.toggle('on',!!st.place&&!regs.some(b=>b.classList.contains('on')));
+  document.querySelectorAll('[data-sf]').forEach(b=>b.classList.toggle('on',st.sf!=null&&Math.abs(parseFloat(b.dataset.sf)-st.sf)<0.005));
+  const n=document.getElementById('locNote');
+  if(n&&st.lat!=null){const f=st.sf==null?'—':(st.sf===0?'Off (catch‑all)':(st.sf>=0.05?'Strict':'Loose'));
+    n.textContent='Region: '+(st.place||'Custom')+' ('+st.lat.toFixed(2)+', '+st.lon.toFixed(2)+') · Geo filter: '+f+(st.sf!=null?' ('+st.sf+')':'');}}
+function detectLoc(){const n=document.getElementById('locNote');if(n)n.textContent='Detecting location…';
+  fetch('/api/geoip').then(r=>r.json()).then(g=>{if(g.lat==null){if(n)n.textContent='Could not detect location';return;}
+    fetch('/api/birdloc?lat='+g.lat+'&lon='+g.lon+'&place='+encodeURIComponent(g.place)).then(r=>r.json()).then(d=>{if(n&&!d.ok)n.textContent='Failed';markGeo();});
+  }).catch(()=>{if(n)n.textContent='Error';});}
+function setSf(t){const n=document.getElementById('locNote');const lbl=t==0?'Off (catch‑all)':(t<0.05?'Loose':'Strict');
+  n.textContent='Geo filter: '+lbl+' — restarting analysis…';
+  fetch('/api/sf?t='+t).then(r=>r.json()).then(d=>{markGeo();}).catch(()=>{n.textContent='Error';});}
+async function openAnalytics(){openView('analytics');
+  const b=document.getElementById('anBody');b.innerHTML='Loading…';
+  try{
+    const a=await (await fetch('/api/analytics',{cache:'no-store'})).json();
+    const days=a.days||[];
+    if(!days.length){b.innerHTML='<div class="about">No detections yet today.</div>';return;}
+    // Anchor "Today"/"Yesterday" to the newest day the server returned, NOT the device clock
+    // (the Car Thing has no RTC/NTP, so new Date() is unreliable and mislabels the days).
+    const anchor=days[0].date;
+    // Today first, then each previous day stacked below — scroll down through the history.
+    b.innerHTML=days.map((d,i)=>dayReport(d,i,anchor)).join('');
+  }catch(e){b.innerHTML='<div class="about">Could not load analytics.</div>';}
+}
+function anDayLabel(d,anchor){
+  if(d.date===anchor)return 'Today';
+  const diff=Math.round((new Date(anchor+'T00:00')-new Date(d.date+'T00:00'))/864e5);
+  if(diff===1)return 'Yesterday';
+  return new Date(d.date+'T00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
+}
+function dayReport(a,i,anchor){
+  const mx=Math.max(1,...a.hourly);
+  const bars=a.hourly.map((v,h)=>`<div class="bar${v===mx&&v?' peak':''}" style="height:${v/mx*100}%" title="${h}:00 — ${v}"></div>`).join('');
+  const tops=a.top.map(t=>`<div class="item"><img class="th" src="${IMG(t[0])}" onerror="this.style.visibility='hidden'"><div class="info"><div class="nm">${t[0]}</div></div><div class="cf">${t[1]} · ${Math.round(t[2]*100)}%</div></div>`).join('');
+  const sep=i?'margin-top:28px;padding-top:22px;border-top:1px solid var(--hair)':'';
+  return `
+    <div class="daybox" style="${sep}">
+      <div class="dlabel" style="font-size:19px;color:var(--fg);text-transform:none;letter-spacing:-.01em;margin:0 4px 12px">${anDayLabel(a,anchor)}</div>
+      <div class="stats" style="margin-bottom:12px">
+        <div class="stat"><div class="n">${a.detections}</div><div class="l">Detections</div></div>
+        <div class="stat"><div class="n">${a.species}</div><div class="l">Species</div></div>
+        <div class="stat"><div class="n">${a.high_pct}%</div><div class="l">High-confidence</div></div>
+      </div>
+      <div class="about" style="padding:0 4px 10px">Mean confidence ${Math.round(a.conf_mean*100)}% · borderline (possible false IDs) <b>${a.bord_pct}%</b> · best hour ~${a.peak}:00</div>
+      <div class="chart" style="width:100%">${bars}</div>
+      <div class="xax" style="width:100%"><span>0</span><span>6</span><span>12</span><span>18</span></div>
+      <div class="dlabel" style="margin:16px 4px 8px">Top species</div>${tops}`;
+}
+let specEnergy=0, specRAF=0, lastLiveKey='';
+function specLoop(){
+  const cv=document.getElementById('spec'); if(!cv){specRAF=0;return;}
+  if(!document.getElementById('live').classList.contains('show')){specRAF=0;return;}
+  const x=cv.getContext('2d'),W=cv.width,H=cv.height;
+  const img=x.getImageData(2,0,W-2,H); x.clearRect(0,0,W,H); x.putImageData(img,0,0);
+  specEnergy*=0.97;                          // decays; bumps on a fresh detection
+  const base=0.34+specEnergy*1.4, n=10, cx=W-2;
+  for(let i=0;i<n;i++){
+    const amp=(Math.sin(Date.now()/170+i*1.3)*0.4+0.6)*base*(0.5+Math.random()*0.5);
+    const h=Math.min(H, amp*H), y=(H-h)/2;
+    x.fillStyle='rgba(48,209,88,'+(0.4+amp*0.6).toFixed(2)+')';
+    x.fillRect(cx, y+i*(h/n*0), Math.random()*2+1, h);
+  }
+  specRAF=requestAnimationFrame(specLoop);
+}
+let wxFocusT=0;
+
+// Weather view: LONG-press button 1 returns to the bird dashboard. Keys come either straight
+// from this page or forwarded by the embedded weather page (postMessage); short presses are ignored there.
+let wxLP=0;
+function wxKey(t,k){
+  if(!document.getElementById('live').classList.contains('show'))return false;
+  if(k==='1'){ if(t==='keydown'){if(!wxLP)wxLP=setTimeout(()=>{wxLP=0;closeAllOverlays();},700);}
+               else{clearTimeout(wxLP);wxLP=0;} return true; }
+  return false;
+}
+window.addEventListener('message',e=>{const m=e.data;if(m&&m.k&&m.t){wxKey(m.t,m.k);}});
+['keydown','keyup'].forEach(t=>document.addEventListener(t,ev=>{if(wxKey(t,ev.key)){ev.preventDefault();ev.stopImmediatePropagation();}},true));
+function openLive(){openView('live');document.body.classList.add('wxlive');const f=document.getElementById('wxFrame');
+  if(!f.src){f.src='http://'+location.hostname+':8095/#c69';f.onload=()=>f.focus();}
+  clearInterval(wxFocusT);wxFocusT=setInterval(()=>{if(document.activeElement!==f)f.focus();},500);}
+function renderLive(){
+  if(!rows.length){document.getElementById('liveName').textContent='Listening…';
+    document.getElementById('liveSci').textContent='';document.getElementById('liveConf').textContent='';
+    document.getElementById('liveImg').style.visibility='hidden';return;}
+  const b=rows[0];
+  document.getElementById('liveName').textContent=b.com;
+  document.getElementById('liveSci').textContent=b.sci||'';
+  document.getElementById('liveConf').textContent='confidence '+Math.round(b.conf*100)+'% · '+fmt12(b.time);
+  const img=document.getElementById('liveImg');img.style.visibility='visible';img.src=IMG(b.com);
+}
+// knob/arrow navigation of Settings options (so you don't have to tap toggles near the edge)
+let setSel=0,sliderActive=false;
+function setOpts(){return Array.from(document.querySelectorAll('#settings .vbody button, #settings .vbody .slider'));}
+function setHi(){const o=setOpts();o.forEach((b,i)=>b.classList.toggle('khi',i===setSel));const c=o[setSel];if(c)c.scrollIntoView({block:'nearest',behavior:'smooth'});}
+function setMove(d){const o=setOpts();if(!o.length)return;
+  sliderActive=false;document.querySelectorAll('#settings .slider.active').forEach(s=>s.classList.remove('active'));
+  setSel=(setSel+d+o.length)%o.length;setHi();}
+async function openSettings(){openView('settings');markSettings();applyBright();markBrightAuto();renderStats();markGeo();mtLoad();psLoad();
+  document.getElementById('about').innerHTML=
+    `BirdThing · version <b>${VERSION}</b><br>Listens for birds with a Spotify Car Thing &amp; BirdNET.<br>Created by <b>Naga</b>.`;
+  setSel=0;sliderActive=false;setTimeout(setHi,60);
+}
+async function renderStats(){
+  try{
+    const s=await (await fetch('/api/stats')).json();
+    const mx=Math.max(1,...s.hourly);
+    const c=document.getElementById('chart'),x=document.getElementById('xax');
+    c.innerHTML='';x.innerHTML='';
+    s.hourly.forEach((v,h)=>{const bar=document.createElement('div');
+      bar.className='bar'+(v===mx&&v>0?' peak':'');bar.style.height=(v/mx*100)+'%';
+      bar.title=h+':00 — '+v;c.appendChild(bar);});
+    for(let h=0;h<24;h+=6){const sp=document.createElement('span');sp.style.flex=6;sp.textContent=h+':00';x.appendChild(sp);}
+  }catch(e){}
+}
+// persisted prefs
+function setTs(v){document.documentElement.style.setProperty('--ts',v);localStorage.setItem('ts',v);markSettings();}
+function setTheme(t){document.body.classList.toggle('light',t==='light');localStorage.setItem('theme',t);markSettings();}
+function applyBright(){brightPct=Math.max(10,Math.min(100,brightPct));   // floor 10% so it never blacks out
+  const f=document.getElementById('bfill');if(f)f.style.width=brightPct+'%';
+  const p=document.getElementById('bpct');if(p)p.textContent=brightPct+(brightAuto?'% · auto':'%');
+  localStorage.setItem('brightPct',brightPct);
+  fetch(CT+'/bright?level='+brightPct).catch(()=>{});}
+function manualBright(v){brightAuto=false;localStorage.setItem('brightAuto','0');markBrightAuto();brightPct=v;applyBright();}
+function brightStep(d){manualBright(brightPct+d);}
+function brightTap(e){const r=document.getElementById('bbar').getBoundingClientRect();manualBright(Math.round((e.clientX-r.left)/r.width*100));}
+// SOLAR auto-brightness. The Car Thing's ambient light sensor (TMD2772) is dead at the silicon
+// level (every ADC channel reads 0 over i2c even at 120x gain / 700ms integration), so we cannot
+// sense light directly. Instead compute the sun's elevation from the device lat/lon + the synced
+// Pi clock and ramp the backlight smoothly across REAL dawn/dusk (tracks the seasons, unlike the
+// old fixed hour buckets which dimmed at 8pm while the summer sun was still up).
+function solarElevationDeg(lat,lon,utcMs){
+  const R=Math.PI/180,D=180/Math.PI;
+  const n=utcMs/86400000+2440587.5-2451545.0;            // days since J2000.0
+  const L=(280.460+0.9856474*n)%360;                     // mean longitude (deg)
+  const g=((357.528+0.9856003*n)%360)*R;                 // mean anomaly (rad)
+  const lam=(L+1.915*Math.sin(g)+0.020*Math.sin(2*g))*R; // ecliptic longitude (rad)
+  const eps=(23.439-0.0000004*n)*R;                      // obliquity (rad)
+  const decl=Math.asin(Math.sin(eps)*Math.sin(lam));     // declination
+  const gmst=(280.46061837+360.98564736629*n)%360;       // Greenwich mean sidereal time (deg)
+  let ra=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam))*D;ra=(ra+360)%360;
+  const H=(((gmst+lon)%360)-ra)*R;                       // hour angle (rad)
+  const phi=lat*R;
+  return Math.asin(Math.sin(phi)*Math.sin(decl)+Math.cos(phi)*Math.cos(decl)*Math.cos(H))*D;
+}
+function autoLevelHour(h){if(h>=8&&h<19)return 100;if(h>=6&&h<8)return 75;if(h>=19&&h<21)return 45;return 10;}
+function autoLevel(){
+  const utc=(srvOffMs!=null?Date.now()+srvOffMs:Date.now());
+  if(luLat==null) return autoLevelHour(new Date(utc+tzOffMin*60000).getUTCHours());  // fallback until weather loads
+  const e=solarElevationDeg(luLat,luLon,utc);
+  let pct;
+  if(e>=AB_HI) pct=AB_DAY;
+  else if(e<=AB_LO) pct=AB_NIGHT;
+  else{const t=(e-AB_LO)/(AB_HI-AB_LO);pct=AB_NIGHT+(AB_DAY-AB_NIGHT)*(0.5-0.5*Math.cos(Math.PI*t));}  // smooth S-ramp through twilight
+  if(luCloud!=null&&e>0) pct*=(1-0.18*luCloud/100);      // gentle daytime dimming under overcast
+  return Math.max(AB_NIGHT,Math.min(100,Math.round(pct)));
+}
+function autoApply(force){if(!brightAuto)return;
+  const lvl=autoLevel();
+  if(force||lvl!==_lastAutoLvl){_lastAutoLvl=lvl;brightPct=lvl;applyBright();}}
+function setAuto(on){brightAuto=on;localStorage.setItem('brightAuto',on?'1':'0');markBrightAuto();if(on)autoApply(true);}
+function markBrightAuto(){const b=document.getElementById('bAuto');if(b)b.classList.toggle('on',brightAuto);}
+function markSettings(){
+  const ts=localStorage.getItem('ts')||'1',th=document.body.classList.contains('light')?'light':'dark';
+  document.querySelectorAll('[data-ts]').forEach(b=>b.classList.toggle('on',b.dataset.ts===ts));
+  document.querySelectorAll('[data-th]').forEach(b=>b.classList.toggle('on',b.dataset.th===th));
+}
+(function applySaved(){const ts=localStorage.getItem('ts');if(ts)document.documentElement.style.setProperty('--ts',ts);
+  if(localStorage.getItem('theme')==='light')document.body.classList.add('light');
+  setTimeout(()=>{markBrightAuto();if(brightAuto)autoApply(true);else applyBright();},1500);})();
+// stat cards tappable
+document.querySelectorAll('.stat').forEach(s=>s.onclick=openGallery);
+
+// ---- Spotify (now playing + transport; backed by spotifyd + MPRIS on the Pi via /api/spotify*) ----
+let spState={};
+function fmtT(ms){if(!ms||ms<0)ms=0;const s=Math.floor(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+function spOpen(){return document.getElementById('spotify').classList.contains('show');}
+function openSpotify(){openView('spotify');renderSpotify(spState);}
+function renderNp(s){const np=document.getElementById('np');
+  if(s&&s.title){document.getElementById('npText').textContent=s.title+(s.artist?' — '+s.artist:'');np.style.display='flex';}
+  else np.style.display='none';}
+function renderSpotify(s){
+  s=s||{};
+  document.getElementById('spArt').style.backgroundImage=s.art?`url('${s.art}')`:'none';
+  document.getElementById('spTitle').textContent=s.title||(s.available?'Nothing playing':'Spotify not connected');
+  document.getElementById('spArtist').textContent=s.artist||'';
+  const dur=s.dur_ms||0,pos=s.pos_ms||0;
+  document.getElementById('spFill').style.width=(dur?Math.min(100,pos/dur*100):0)+'%';
+  document.getElementById('spPos').textContent=fmtT(pos);
+  document.getElementById('spDur').textContent=fmtT(dur);
+  document.getElementById('spPlay').textContent=s.playing?'⏸':'▶';
+  const vf=document.getElementById('spVolFill');if(vf)vf.style.width=(s.volume==null?50:s.volume)+'%';
+  const hint=document.getElementById('spHint');
+  if(hint)hint.textContent=s.available?'':'Open Spotify on your phone and pick this device to play.';
+}
+function spCmd(c){fetch('/api/spotify/cmd?c='+c).then(()=>setTimeout(pollSpotify,200)).catch(()=>{});}
+function spVol(d){const v=Math.max(0,Math.min(100,(spState&&spState.volume!=null?spState.volume:50)+d));
+  if(spState)spState.volume=v;const vf=document.getElementById('spVolFill');if(vf)vf.style.width=v+'%';
+  fetch('/api/spotify/vol?v='+v).then(()=>setTimeout(pollSpotify,300)).catch(()=>{});}
+async function pollSpotify(){
+  try{const s=await (await fetch('/api/spotify',{cache:'no-store'})).json();spState=s;renderNp(s);if(spOpen())renderSpotify(s);}
+  catch(e){renderNp(null);if(spOpen())renderSpotify({available:false});}
+}
+pollSpotify();setInterval(pollSpotify,1000);
+
+// Weather
+let unit='C',query='';
+// is it night at the Pi's location? (uses the synced Pi clock, same as the top-bar clock)
+function isNightNow(){const base=(srvOffMs!=null?Date.now()+srvOffMs:Date.now())+tzOffMin*60000;
+  const h=new Date(base).getUTCHours();return h<6||h>=20;}
+// colored inline SVG weather icons (the kiosk Chromium has no color-emoji font, so emoji render gray)
+function wxSvg(desc,night){
+  const d=(desc||'').toLowerCase();
+  const SUN='<circle cx="12" cy="12" r="5.2" fill="#ffd60a"/><g stroke="#ffd60a" stroke-width="2" stroke-linecap="round"><line x1="12" y1="1" x2="12" y2="3.6"/><line x1="12" y1="20.4" x2="12" y2="23"/><line x1="1" y1="12" x2="3.6" y2="12"/><line x1="20.4" y1="12" x2="23" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></g>';
+  const STAR='<path fill="#fff" d="M12 2.2l2.6 5.8 6.3.6-4.8 4.2 1.4 6.2L12 15.9l-5.5 3.1 1.4-6.2L3.1 8.6l6.3-.6z"/>';
+  const cloud=c=>'<path fill="'+c+'" d="M7.5 19h9.6a4.2 4.2 0 0 0 .4-8.4 6.2 6.2 0 0 0-11.9-1.1A3.8 3.8 0 0 0 7.5 19z"/>';
+  const GRAY='#c7c7cc',DK='#aeaeb2';let s;
+  if(d.includes('thunder')) s=cloud(DK)+'<path fill="#ffd60a" d="M12 15l-3.3 4.6h2.2l-1.2 3.6 4.2-5.4h-2.1z"/>';
+  else if(d.includes('snow')||d.includes('grains')) s=cloud(GRAY)+'<g fill="#fff"><circle cx="8.5" cy="21.6" r="1.25"/><circle cx="12" cy="22.3" r="1.25"/><circle cx="15.5" cy="21.6" r="1.25"/></g>';
+  else if(d.includes('rain')||d.includes('drizzle')||d.includes('shower')) s=cloud(GRAY)+'<g stroke="#5ac8fa" stroke-width="2" stroke-linecap="round"><line x1="8.5" y1="20.4" x2="7.5" y2="23.2"/><line x1="12" y1="20.4" x2="11" y2="23.2"/><line x1="15.5" y1="20.4" x2="14.5" y2="23.2"/></g>';
+  else if(d.includes('fog')||d.includes('rime')) s=cloud(GRAY)+'<g stroke="#8e8e93" stroke-width="1.8" stroke-linecap="round"><line x1="6" y1="21.5" x2="15" y2="21.5"/><line x1="9" y1="23.6" x2="18" y2="23.6"/></g>';
+  else if(d.includes('overcast')) s=cloud(DK);
+  else if(d.includes('partly')||d.includes('mainly')) s='<g transform="translate(7.5,-3.5) scale(0.5)">'+(night?STAR:SUN)+'</g>'+cloud(night?'#d1d1d6':'#e8e8ed');
+  else if(d.includes('clear')) s=night?STAR:SUN;
+  else s=cloud(GRAY);
+  return '<svg viewBox="0 0 24 24" aria-hidden="true">'+s+'</svg>';
+}
+async function fetchWeather(){
+  try{const w=await (await fetch('/api/weather',{cache:'no-store'})).json();
+    unit=w.unit||'C';document.getElementById('wxIcon').innerHTML=wxSvg(w.desc,isNightNow());
+    document.getElementById('wxTemp').textContent=(w.temp==null?'--':w.temp)+'°'+unit;
+    if(typeof w.lat==='number'){luLat=w.lat;luLon=w.lon;}
+    if(typeof w.cloud==='number')luCloud=w.cloud;
+    if(brightAuto)autoApply(true);}
+  catch(e){document.getElementById('wxIcon').innerHTML=wxSvg('',false);}
+}
+fetchWeather();setInterval(fetchWeather,300000);
+function markUnit(){document.getElementById('unitC').classList.toggle('on',unit==='C');
+  document.getElementById('unitF').classList.toggle('on',unit==='F');}
+function openWx(){query='';document.getElementById('wxResults').innerHTML='';
+  document.getElementById('qbox').textContent='Type a city…';markUnit();buildKb();
+  document.getElementById('wxset').classList.add('show');}
+function closeWx(){document.getElementById('wxset').classList.remove('show');fetchWeather();}
+async function setUnit(u){unit=u;markUnit();await fetch('/api/weather/unit?u='+u);fetchWeather();}
+const KB=[['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['Z','X','C','V','B','N','M']];
+function buildKb(){const kb=document.getElementById('kb');kb.innerHTML='';
+  KB.forEach(row=>{const r=document.createElement('div');r.className='krow';
+    row.forEach(ch=>{const k=document.createElement('div');k.className='key';k.textContent=ch;
+      k.onclick=()=>{query+=ch;showQuery();};r.appendChild(k);});kb.appendChild(r);});
+  const r=document.createElement('div');r.className='krow';
+  const bs=document.createElement('div');bs.className='key';bs.textContent='⌫';bs.onclick=()=>{query=query.slice(0,-1);showQuery();};
+  const sp=document.createElement('div');sp.className='key wide';sp.textContent='space';sp.onclick=()=>{query+=' ';showQuery();};
+  const go=document.createElement('div');go.className='key wide';go.textContent='Search';go.onclick=doSearch;
+  r.appendChild(bs);r.appendChild(sp);r.appendChild(go);kb.appendChild(r);}
+function showQuery(){document.getElementById('qbox').textContent=query||'Type a city…';}
+async function doSearch(){if(!query.trim())return;
+  const box=document.getElementById('wxResults');box.innerHTML='<div class="res">Searching…</div>';
+  try{const res=await (await fetch('/api/geocode?q='+encodeURIComponent(query))).json();box.innerHTML='';
+    if(!res.length){box.innerHTML='<div class="res">No matches</div>';return;}
+    res.forEach(r=>{const d=document.createElement('div');d.className='res';d.textContent='📍 '+r.place;
+      d.onclick=async()=>{await fetch('/api/weather/loc?lat='+r.lat+'&lon='+r.lon+'&place='+encodeURIComponent(r.place));
+        await fetchWeather();closeWx();};box.appendChild(d);});
+  }catch(e){box.innerHTML='<div class="res">Search failed</div>';}}
+
+// ---- Clock + calendars (tap the time -> analog clock + month; tap the date -> year) ----
+function nowD(){const base=(srvOffMs!=null?Date.now()+srvOffMs:Date.now())+tzOffMin*60000;return new Date(base);}
+// Scale a view's content to exactly fit its container so the clock/calendar stay fully on-screen
+// at every text size (and the year calendar scales UP to fill the screen).
+function fitInto(el,maxS){
+  el.style.transform='';el.style.transformOrigin='center center';
+  const p=el.parentElement;
+  const s=Math.min(maxS||1,(p.clientWidth-8)/el.scrollWidth,(p.clientHeight-8)/el.scrollHeight);
+  if(s>0&&isFinite(s))el.style.transform='scale('+s+')';
+}
+function openClock(){openView('clockview');buildTicks();renderMonthCal();updClock();
+  setTimeout(()=>fitInto(document.getElementById('clockWrap'),1.12),30);}
+function openYear(){openView('yearview');renderYear();
+  setTimeout(()=>fitInto(document.getElementById('yearGrid'),2.6),30);}
+function buildTicks(){const g=document.getElementById('anaTicks');if(g.childElementCount)return;let h='';
+  for(let i=0;i<60;i++){const a=i*6*Math.PI/180,r1=i%5?90:83;
+    const x1=100+Math.sin(a)*r1,y1=100-Math.cos(a)*r1,x2=100+Math.sin(a)*94,y2=100-Math.cos(a)*94;
+    h+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${i%5?'var(--hair)':'var(--sec)'}" stroke-width="${i%5?1:3}"/>`;}
+  g.innerHTML=h;}
+function updClock(){
+  if(!document.getElementById('clockview').classList.contains('show'))return;
+  const d=nowD(),h=d.getUTCHours(),m=d.getUTCMinutes(),s=d.getUTCSeconds();
+  const rot=(id,deg)=>{const e=document.getElementById(id);if(e)e.setAttribute('transform','rotate('+deg+' 100 100)');};
+  rot('anaH',(h%12)*30+m*.5);rot('anaM',m*6+s*.1);rot('anaS',s*6);
+  document.getElementById('digTime').textContent=((h%12)||12)+':'+String(m).padStart(2,'0')+' '+(h<12?'AM':'PM');
+  document.getElementById('digDate').textContent=DAYS[d.getUTCDay()]+', '+MON[d.getUTCMonth()]+' '+d.getUTCDate()+', '+d.getUTCFullYear();}
+function monthHTML(y,mo,hl,big){  // hl = day-of-month to highlight, -1 for none
+  const first=new Date(Date.UTC(y,mo,1)).getUTCDay(),days=new Date(Date.UTC(y,mo+1,0)).getUTCDate();
+  const cs=big?'30px':'15px',fs=big?'15px':'9.5px',hf=big?'17px':'11px';
+  let h=`<div style="font-weight:700;font-size:${hf};margin-bottom:3px;color:var(--green)">${MON[mo]}${big?' '+y:''}</div>`;
+  h+=`<div style="display:grid;grid-template-columns:repeat(7,${cs});font-size:${fs};line-height:${cs};text-align:center;color:var(--sec)">`+
+     ['S','M','T','W','T','F','S'].map(x=>'<div>'+x+'</div>').join('')+'</div>';
+  h+=`<div style="display:grid;grid-template-columns:repeat(7,${cs});font-size:${fs};line-height:${cs};text-align:center;">`;
+  for(let i=0;i<first;i++)h+='<div></div>';
+  for(let dd=1;dd<=days;dd++)h+=(dd===hl)
+    ?`<div style="background:var(--green);color:#000;border-radius:50%;font-weight:700">${dd}</div>`
+    :`<div>${dd}</div>`;
+  return h+'</div>';}
+function renderMonthCal(){const d=nowD();
+  document.getElementById('monthCal').innerHTML=monthHTML(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),true);}
+function renderYear(){const d=nowD(),y=d.getUTCFullYear();
+  document.getElementById('yearTitle').textContent=y;
+  document.getElementById('yearBody').innerHTML='<div id="yearGrid" style="display:grid;grid-template-columns:repeat(4,auto);gap:8px 18px;">'+
+    [...Array(12)].map((_,m)=>'<div>'+monthHTML(y,m,m===d.getUTCMonth()?d.getUTCDate():-1,false)+'</div>').join('')+'</div>';}
+
+// ---- Microphone & bird ID tuning (Settings sliders -> /api/mictune/set) ----
+// gain=MAX_GAIN & gate=NOISE_FLOOR on the Car Thing mic node, hp=receiver high-pass, conf=BirdNET CONFIDENCE.
+const MT={gain:{min:20,max:300},gate:{min:0,max:200},conf:{min:0.5,max:0.95}};
+let mtVals={gain:120,gate:25,hp:1,conf:0.8},mtT=null;
+function mtBar(id,key,fmt){
+  const bar=document.getElementById(id),fill=document.getElementById(id+'F'),
+        lbl=document.getElementById(id+'V'),o=MT[key];
+  function set(v,apply){v=Math.max(o.min,Math.min(o.max,v));mtVals[key]=v;
+    fill.style.width=(100*(v-o.min)/(o.max-o.min))+'%';lbl.textContent='— '+fmt(v);
+    if(apply)mtQueue();}
+  function fromE(e){const r=bar.getBoundingClientRect();
+    set(o.min+((e.clientX-r.left)/r.width)*(o.max-o.min),false);}
+  let d=false;
+  bar.addEventListener('pointerdown',e=>{d=true;bar.classList.add('active');try{bar.setPointerCapture(e.pointerId);}catch(_){ }fromE(e);});
+  bar.addEventListener('pointermove',e=>{if(d)fromE(e);});
+  ['pointerup','pointercancel'].forEach(ev=>bar.addEventListener(ev,()=>{if(d){d=false;bar.classList.remove('active');mtQueue();}}));
+  return set;}
+const mtSetters={gain:mtBar('mtGain','gain',v=>Math.round(v)+'× max boost'),
+  gate:mtBar('mtGate','gate',v=>Math.round(v)+(v<15?' (off — hears everything)':v<70?' (normal)':' (strong)')),
+  conf:mtBar('mtConf','conf',v=>Math.round(v*100)+'% sure'+(v<0.65?' (catch-all)':v<0.85?' (balanced)':' (strict)'))};
+// knob step per mic slider (id -> [mtVals key, step per detent]); adjusts + applies (debounced)
+const MTSTEP={mtGain:['gain',10],mtGate:['gate',10],mtConf:['conf',0.02]};
+function mtKnob(id,dir){
+  if(id==='psBed'||id==='psLiv'){if(psLoaded)psSetters[id==='psBed'?'bed':'liv'](psVals[id==='psBed'?'bed':'liv']+dir,true);return;}
+  const s=MTSTEP[id];if(!s)return;mtSetters[s[0]](mtVals[s[0]]+dir*s[1],true);}
+function mtHp(v){mtVals.hp=v;markMt();mtQueue();}
+function markMt(){document.querySelectorAll('[data-hp]').forEach(b=>b.classList.toggle('on',+b.dataset.hp===mtVals.hp));
+  const e=document.getElementById('mtHpV');if(e)e.textContent=mtVals.hp?'— On (cuts below 250 Hz)':'— Off (raw audio)';}
+function mtQueue(){clearTimeout(mtT);
+  const st=document.getElementById('mtStatus');st.textContent='Applying… (restarts the analyzer, ~5 s)';
+  mtT=setTimeout(async()=>{try{
+    const r=await (await fetch('/api/mictune/set?gain='+Math.round(mtVals.gain)+'&gate='+Math.round(mtVals.gate)+'&hp='+mtVals.hp+'&conf='+mtVals.conf.toFixed(2))).json();
+    const a=r.applied||{};
+    st.textContent='Applied ✓  ·  Car Thing mic '+(a.mic?'✓':'unreachable — will pick it up when it reconnects');
+  }catch(e){st.textContent='Apply failed — try again';}},800);}
+async function mtLoad(){try{const c=await (await fetch('/api/mictune')).json();
+  mtVals={gain:c.gain,gate:c.gate,hp:c.hp,conf:c.conf};
+  mtSetters.gain(c.gain,false);mtSetters.gate(c.gate,false);mtSetters.conf(c.conf,false);markMt();
+  document.getElementById('mtStatus').textContent='';}catch(e){}}
+
+// ---- Room presence sensitivity (Settings sliders -> /api/presens* -> Home Assistant helpers) ----
+// Levels 1-10 (1 = least sensitive, 10 = most). HA owns the mapping to the real ESP32 threshold;
+// this page only reads/writes the level. Only a slider the user actually moved is ever written
+// back (psDirty), and nothing is written until the current values loaded successfully (psLoaded),
+// so a failed load can never overwrite the real settings with defaults.
+let psVals={bed:6,liv:6},psThr={bed:'',liv:''},psDirty={},psLoaded=false,psT=null,psSetters={};
+const psTxt=v=>v+' / 10'+(v<=2?' (least sensitive)':v>=9?' (most sensitive)':'');
+function psBar(id,key){
+  const bar=document.getElementById(id),fill=document.getElementById(id+'F'),lbl=document.getElementById(id+'V');
+  function set(v,apply){v=Math.max(1,Math.min(10,Math.round(v)));psVals[key]=v;
+    fill.style.width=(100*(v-1)/9)+'%';
+    lbl.textContent='— '+psTxt(v)+(psThr[key]?' · threshold '+psThr[key]:'');
+    if(apply){psDirty[key]=1;psQueue();}}
+  function fromE(e){if(!psLoaded)return;const r=bar.getBoundingClientRect();set(1+((e.clientX-r.left)/r.width)*9,false);}
+  let d=false;
+  bar.addEventListener('pointerdown',e=>{if(!psLoaded)return;d=true;bar.classList.add('active');try{bar.setPointerCapture(e.pointerId);}catch(_){ }fromE(e);});
+  bar.addEventListener('pointermove',e=>{if(d)fromE(e);});
+  ['pointerup','pointercancel'].forEach(ev=>bar.addEventListener(ev,()=>{if(d){d=false;bar.classList.remove('active');psDirty[key]=1;psQueue();}}));
+  return set;}
+psSetters={bed:psBar('psBed','bed'),liv:psBar('psLiv','liv')};
+function psShow(c){psVals.bed=c.bedroom;psVals.liv=c.living_room;psThr.bed=c.bedroom_threshold;psThr.liv=c.living_room_threshold;
+  psSetters.bed(c.bedroom,false);psSetters.liv(c.living_room,false);}
+function psQueue(){clearTimeout(psT);const st=document.getElementById('psStatus');st.textContent='Applying…';
+  psT=setTimeout(async()=>{try{
+    const p=new URLSearchParams();
+    if(psDirty.bed)p.set('bedroom',psVals.bed);if(psDirty.liv)p.set('living_room',psVals.liv);
+    psDirty={};
+    const r=await (await fetch('/api/presens/set?'+p.toString())).json();
+    if(!r.ok){st.textContent='Could not apply — '+(r.err||'Home Assistant unreachable')+'. Try again.';return;}
+    psShow(r);st.textContent='Applied ✓  ·  sensor threshold now '+r.bedroom_threshold+' (bedroom), '+r.living_room_threshold+' (living room)';
+  }catch(e){st.textContent='Could not apply — try again.';}},600);}
+async function psLoad(){const st=document.getElementById('psStatus');
+  try{const c=await (await fetch('/api/presens')).json();
+    if(!c.ok)throw new Error(c.err||'unreachable');
+    psLoaded=true;psShow(c);st.textContent='';
+  }catch(e){psLoaded=false;st.textContent='Can’t reach Home Assistant right now — sliders are locked so nothing gets overwritten.';}}
+
+// ---- Clap control (Settings -> Clap page -> /api/clap*). Toggles HA switches on a double
+// clap. Fully separate from BirdNET; sensitivity/boost tune the receiver's clapdetect. ----
+let clVals={enabled:true,mode:'smart',after_sunset:false,pre_sunset_min:0,sensitivity:6,boost:1,dbl_max:0.6,cooldown:1.2,entities:[],day_entities:[],_night:null,_set:null,_rise:null};
+let clT=null,clPoll=null,clSwitches=[],clSetters={};
+const CLDEF={clSens:{key:'sensitivity',min:1,max:10,fmt:v=>Math.round(v)+' / 10'+(v<=3?' (strict)':v>=8?' (very sensitive)':'')},
+  clBoost:{key:'boost',min:1,max:8,fmt:v=>v.toFixed(1)+'×'},
+  clDbl:{key:'dbl_max',min:0.3,max:1.2,fmt:v=>Math.round(v*1000)+' ms apart max'},
+  clCool:{key:'cooldown',min:0.3,max:4,fmt:v=>v.toFixed(1)+' s'}};
+function clBar(id){const o=CLDEF[id],bar=document.getElementById(id),fill=document.getElementById(id+'F'),lbl=document.getElementById(id+'V');
+  function set(v,apply){v=Math.max(o.min,Math.min(o.max,v));clVals[o.key]=v;
+    fill.style.width=(100*(v-o.min)/(o.max-o.min))+'%';lbl.textContent='— '+o.fmt(v);if(apply)clQueue();}
+  function fromE(e){const r=bar.getBoundingClientRect();set(o.min+((e.clientX-r.left)/r.width)*(o.max-o.min),false);}
+  let d=false;
+  bar.addEventListener('pointerdown',e=>{d=true;bar.classList.add('active');try{bar.setPointerCapture(e.pointerId);}catch(_){}fromE(e);});
+  bar.addEventListener('pointermove',e=>{if(d)fromE(e);});
+  ['pointerup','pointercancel'].forEach(ev=>bar.addEventListener(ev,()=>{if(d){d=false;bar.classList.remove('active');clQueue();}}));
+  return set;}
+function clQueue(){clearTimeout(clT);const st=document.getElementById('clStatus');st.textContent='Saving…';
+  clT=setTimeout(async()=>{try{
+    const p=new URLSearchParams({enabled:clVals.enabled?1:0,mode:clVals.mode,after_sunset:clVals.after_sunset?1:0,
+      pre_sunset_min:clVals.pre_sunset_min|0,sensitivity:Math.round(clVals.sensitivity),
+      boost:clVals.boost.toFixed(1),dbl_max:clVals.dbl_max.toFixed(2),cooldown:clVals.cooldown.toFixed(1),
+      entities:clVals.entities.join(','),day_entities:clVals.day_entities.join(',')});
+    await fetch('/api/clap/set?'+p.toString());st.textContent='Saved ✓';
+  }catch(e){st.textContent='Save failed — try again';}},500);}
+function clMark(){document.querySelectorAll('[data-clen]').forEach(b=>b.classList.toggle('on',+b.dataset.clen===(clVals.enabled?1:0)));}
+function clEnable(v){clVals.enabled=!!v;clMark();clQueue();}
+function clModeMark(){document.querySelectorAll('[data-clmode]').forEach(b=>b.classList.toggle('on',b.dataset.clmode===clVals.mode));
+  const n=document.getElementById('clModeNote');if(!n)return;
+  n.textContent=clVals.mode==='smart'
+    ?'Confirms with a real sound-recognition model before toggling — ignores talking/TV/other noise, ~1s slower to react.'
+    :'Toggles on ANY loud double-tap sound instantly — no recognition, so talking or other noise can trigger it too.';}
+function clMode(v){clVals.mode=v;clModeMark();clQueue();}
+function clSunMark(){document.querySelectorAll('[data-clss]').forEach(b=>b.classList.toggle('on',+b.dataset.clss===(clVals.after_sunset?1:0)));
+  const pr=document.getElementById('clPreRow');if(pr)pr.style.opacity=clVals.after_sunset?'1':'.45';}
+function clSunset(v){clVals.after_sunset=!!v;clSunMark();clSunNote();clQueue();}
+function clPreMark(){document.querySelectorAll('[data-clpre]').forEach(b=>b.classList.toggle('on',+b.dataset.clpre===(clVals.pre_sunset_min>0?1:0)));}
+function clPre(v){clVals.pre_sunset_min=v?30:0;clPreMark();clSunNote();clQueue();}
+const _clT=s=>{try{return new Date(s).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(_){return'';}};
+function clSunNote(){const e=document.getElementById('clSunNote');if(!e)return;
+  // With a daytime list configured the window no longer switches claps OFF by day —
+  // it hands them over to the other set of devices — so say that instead of "paused".
+  const hasDay=clVals.day_entities.length>0;
+  if(!clVals.after_sunset&&!hasDay){e.textContent='Claps work any time of day.';return;}
+  if(clVals._night==null){e.textContent='Uses your Home Assistant location to find sunset.';return;}
+  const pre=clVals.pre_sunset_min>0;
+  if(clVals._night){e.textContent='🌙 Evening list active now'+(clVals._rise?' — until sunrise ~'+_clT(clVals._rise):'')
+    +(hasDay?', then the daytime list takes over.':'.');return;}
+  // daytime: show when the evening list takes over
+  let from=clVals._set;
+  if(pre&&clVals._set){try{from=new Date(new Date(clVals._set).getTime()-clVals.pre_sunset_min*60000).toISOString();}catch(_){}}
+  const when=(pre?'~'+_clT(from)+' ('+clVals.pre_sunset_min+' min before sunset)':'sunset ~'+_clT(clVals._set));
+  e.textContent=(hasDay?'☀️ Daytime list active — the evening list takes over at '+when+', until sunrise.'
+                       :'☀️ Paused — active from '+when+', until sunrise.');}
+// one picker per time-of-day list: boxId renders clVals[key] (entities = evening,
+// day_entities = daytime), so the same HA entity can be in either or both.
+function clRenderPicker(boxId,key){const box=document.getElementById(boxId);if(!box)return;
+  if(!clSwitches.length){box.innerHTML='<div class="about">No Home Assistant switches found — check the HA token.</div>';return;}
+  box.innerHTML='';clSwitches.forEach(s=>{const on=clVals[key].includes(s.id);
+    const b=document.createElement('button');b.className='clsw'+(on?' on':'');
+    b.innerHTML=(on?'☑ ':'☐ ')+s.name+' <span class="csid">· '+s.id+'</span>';
+    b.onclick=()=>{const i=clVals[key].indexOf(s.id);if(i>=0)clVals[key].splice(i,1);else clVals[key].push(s.id);
+      clRenderPicker(boxId,key);clSunNote();clQueue();};
+    box.appendChild(b);});}
+function clRenderSwitches(){clRenderPicker('clSwitches','entities');clRenderPicker('clDaySwitches','day_entities');}
+async function clTest(which){const st=document.getElementById('clStatus');st.textContent='Toggling…';
+  try{const r=await (await fetch('/api/clap/test'+(which==='day'?'?which=day':''))).json();
+    st.textContent=r.ok?('Toggled: '+(r.toggled||[]).join(', ')):('Test failed: '+(r.err||'check switches/token'));}
+  catch(e){st.textContent='Test failed';}}
+function clMeter(stat){if(!stat)return;const MAX=32767,pk=stat.peak||0;
+  const f=document.getElementById('clMeterPk');if(f)f.style.width=Math.min(100,100*pk/MAX)+'%';
+  const lv=document.getElementById('clLive');if(lv&&stat.peak!=null)lv.textContent='— peak '+pk+' · background '+(stat.bg||0);
+  const h=document.getElementById('clHint');if(!h)return;
+  // health first: tuning advice is meaningless if the detector or mic is down
+  if(stat.age!=null&&stat.age>5){h.textContent='⚠ Clap detector offline (receiver restarting?) — wait a few seconds.';return;}
+  if(stat.mic_quiet){h.textContent='⚠ The mic has gone silent — self‑repair kicks in within ~2 min. Claps AND bird ID are down until it recovers (this is the mic, not your settings).';return;}
+  if(stat.last_double_ago!=null&&stat.last_double_ago<8)h.textContent='✅ Double clap detected '+stat.last_double_ago+'s ago — switch toggled!';
+  else if(stat.mode==='smart'&&stat.ml_rejected&&stat.last_double_ago!=null&&stat.last_double_ago<10)
+    h.textContent='🤔 Heard a double-tap sound but the recognizer said it wasn\'t a clap ('+stat.ml_rejected+' rejected so far) — not toggled.';
+  else if(stat.last_single_ago!=null&&stat.last_single_ago<4)h.textContent='Heard one clap '+stat.last_single_ago+'s ago — clap twice quickly to toggle.';
+  else{let extra=[];
+    if(stat.glitches)extra.push(stat.glitches+' hardware glitch spikes');
+    if(stat.mode==='smart'){
+      if(!stat.ml_available)extra.push('recognizer model unavailable — falling back to instant toggle');
+      if(stat.ml_rejected)extra.push(stat.ml_rejected+' non-clap sounds correctly ignored');
+      if(stat.ml_unavailable)extra.push(stat.ml_unavailable+' where recognition failed (toggled anyway)');
+    }
+    h.textContent='Clap — the bar should jump near the top. '+(stat.doubles||0)+' double‑claps so far.'+
+      (extra.length?' ('+extra.join(', ')+'.)':'');}}
+async function openClap(){openView('clapview');const st=document.getElementById('clStatus');st.textContent='';
+  if(!clSetters.clSens){clSetters={clSens:clBar('clSens'),clBoost:clBar('clBoost'),clDbl:clBar('clDbl'),clCool:clBar('clCool')};}
+  try{const c=await (await fetch('/api/clap')).json();
+    clVals.enabled=c.enabled;clVals.mode=c.mode||'smart';clVals.after_sunset=c.after_sunset;clVals.pre_sunset_min=c.pre_sunset_min||0;
+    clVals.sensitivity=c.sensitivity;clVals.boost=c.boost;
+    clVals.dbl_max=c.dbl_max;clVals.cooldown=c.cooldown;clVals.entities=c.entities||[];
+    clVals.day_entities=c.day_entities||[];clSwitches=c.switches||[];
+    clVals._night=c.sun_night;clVals._set=c.sun_set;clVals._rise=c.sun_rise;
+    clSetters.clSens(c.sensitivity,false);clSetters.clBoost(c.boost,false);clSetters.clDbl(c.dbl_max,false);clSetters.clCool(c.cooldown,false);
+    clMark();clModeMark();clSunMark();clPreMark();clSunNote();clRenderSwitches();clMeter(c.stat);
+    if(!c.has_token)st.textContent='⚠ No Home Assistant token configured.';
+    else if(!c.switches.length)st.textContent='⚠ Could not reach Home Assistant to list switches.';
+  }catch(e){st.textContent='Could not load clap settings.';}
+  clearInterval(clPoll);
+  clPoll=setInterval(async()=>{
+    if(!document.getElementById('clapview').classList.contains('show')){clearInterval(clPoll);return;}
+    try{const c=await (await fetch('/api/clap')).json();clMeter(c.stat);
+      clVals._night=c.sun_night;clVals._set=c.sun_set;clVals._rise=c.sun_rise;clSunNote();}catch(_){}},700);}
+
+// ---- Universal drag-scroll + pull-to-refresh. The Car Thing touchscreen presents as a mouse
+// (USB HID pointer), so native touch scrolling never kicks in — implement dragging with pointer
+// events. Swipe down from the top past the threshold to reload. ----
+(function(){
+  const ptr=document.createElement('div');ptr.id='ptr';ptr.textContent='↻ Release to refresh';
+  document.body.appendChild(ptr);
+  let down=false,sy=0,st=0,el=null,pull=0,moved=0;
+  function scrollableFrom(t){for(;t&&t!==document.body;t=t.parentElement){
+    const s=getComputedStyle(t);
+    if((s.overflowY==='auto'||s.overflowY==='scroll')&&t.scrollHeight>t.clientHeight+4)return t;}
+    return null;}
+  // Top-right corner is reserved for the phone-notification pull-down (see
+  // notify_widget.html's #ancsCtr swipe-open gate) - refresh must not also
+  // fire there, or the two gestures race and the page reloads mid-swipe
+  // instead of opening notifications. Everywhere else (left through just
+  // past centre, and anywhere lower on the screen) is still refresh.
+  function inNotifCorner(x,y){return y<Math.max(46,innerHeight*0.09)&&x>innerWidth*0.6;}
+  document.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse')return;
+    if(e.target.closest('.slider,#player'))return;  // brightness/mic bars + mini player self-drag
+    if(inNotifCorner(e.clientX,e.clientY))return;
+    down=true;sy=e.clientY;moved=0;pull=0;el=scrollableFrom(e.target);st=el?el.scrollTop:0;
+    if(el)el.style.scrollBehavior='auto';},true);
+  document.addEventListener('pointermove',e=>{if(!down)return;
+    const dy=e.clientY-sy;moved=Math.max(moved,Math.abs(dy),Math.abs(e.movementX||0));
+    if(el){el.scrollTop=st-dy;}
+    else if(dy>0&&!curOverlay()&&!factsOpen){pull=dy;
+      ptr.style.opacity=Math.min(1,dy/130);ptr.style.transform='translate(-50%,'+Math.min(56,dy/2.4)+'px)';}
+  },true);
+  function end(){if(pull>130)location.reload();
+    if(el)el.style.scrollBehavior='';
+    down=false;el=null;pull=0;ptr.style.opacity=0;ptr.style.transform='translate(-50%,0)';}
+  document.addEventListener('pointerup',end,true);
+  document.addEventListener('pointercancel',end,true);
+  // a drag that scrolled shouldn't also fire the click underneath it
+  document.addEventListener('click',e=>{if(moved>14){e.stopPropagation();e.preventDefault();moved=0;}},true);
+})();
+
+// ---- On-screen remote for embedded use (Home Assistant / any iframe) ----
+// Each button fires the SAME key the physical Car Thing remote sends, so the existing
+// navigation handles it: Home=Esc, ▲/▼=knob up/down (scroll+select), Select=Enter (open),
+// Birds/Live/Settings = top buttons 2/3/4. Scrolling also works by dragging inside the frame.
+function hk(key){document.dispatchEvent(new KeyboardEvent('keydown',{key:key,bubbles:true}));}
+// Show the remote only when we're NOT the top window (i.e. embedded in HA/an iframe), or when
+// ?nav=1 is passed. On the Car Thing itself it's top-level, so the bar stays hidden.
+try{if(window.self!==window.top||/[?&]nav=1/.test(location.search))document.body.classList.add('embedded');}catch(e){document.body.classList.add('embedded');}
+</script>
+<!-- ANCS-NOTIFY-BEGIN -->
+<script>window.ANCS_URL="/api/notify";window.ANCS_DEVICE="birdthing";window.ANCS_FS="calc(24px * var(--ts,1))";window.ANCS_STATUS_SLOT=".top .tr";</script>
+<!-- ===== iPhone notification display (ANCS) ==================================
+     Self-contained. Patch-time globals set the DEFAULTS:
+
+       window.ANCS_URL    endpoint to poll (gateway, or a same-origin proxy)
+       window.ANCS_FS     CSS length for the base font size. Everything else is
+                          in em, so pass the host page's OWN scale here and the
+                          notification tracks that screen's typography:
+                            BirdThing     calc(21px * var(--ts,1))
+                            WeatherThing  calc(30px * var(--uiscale,1))
+                            kiosk         clamp(1.3rem, 2vw, 1.9rem)
+       window.ANCS_STYLE  'toast' | 'full'   default layout
+       window.ANCS_THEME  'light' for light pages with no body.light
+       window.ANCS_STATUS_SLOT    CSS selector of a status row to put the
+                                  phone-link glyph inside (BirdThing: '.top .tr')
+       window.ANCS_STATUS_ANCHOR  CSS selector of an existing status icon to
+                                  sit just LEFT of, so they never overlap
+                                  (WeatherThing: '#btStatus')
+       window.ANCS_STATUS         'tr'|'tl'|'br'|'bl'|'off' corner fallback
+
+     NOTIFICATION CENTRE: tap the phone glyph, or swipe down from the top-right
+     corner, for an iOS-style list of everything still on the phone (feed items
+     with no removed_ts). Swipe up / tap the backdrop to close. Gesture
+     listeners are on `document` and only fire on a real vertical drag, so the
+     host's own top-bar taps (clock etc.) still work.
+
+     ---- CHECKLIST for any change here (do ALL before saying it's fixed) ------
+       [ ] UI:      glyph + toast + notification centre on ALL THREE displays,
+                    at every text size, no overlap with the clock / wifi /
+                    bluetooth / chips, no horizontal page scroll, light AND dark.
+       [ ] FUNCTION: a notification that arrives while the screen is up toasts
+                    once; one that arrives during a reload still toasts; one
+                    the user reads on their PHONE a second later (removed_ts
+                    set almost immediately) STILL toasts - removed_ts only
+                    drops the badge, it must never gate the toast.
+                    Test with a real removed_ts item, not just /api/test.
+       [ ] STABILITY: survives a reload / kiosk-watchdog relaunch / reboot
+                    (localStorage: ancsOn, ancsSeenV1). No burst on cold start.
+       [ ] SYNC:    same notify_widget.html injected on all three; repo pushed;
+                    gateway + proxies agree.
+       [ ] VERIFY:  reload each display and read its LIVE DOM / screenshot -
+                    never trust a deploy without looking.
+     -------------------------------------------------------------------------
+
+     The user then overrides size / fullscreen / duration / on-off from the
+     host page's own Settings screen - this script INJECTS those rows into
+     #settings .vbody at runtime rather than editing the dashboards, so both
+     Car Things get the identical panel and stay consistent. Choices live in
+     localStorage and apply immediately.
+
+     PERFORMANCE: no backdrop-filter, no infinite animations, opacity-only
+     transitions. The Car Things composite in software on an Amlogic GPU while
+     their own UI repaints constantly (the WeatherThing redraws an analog clock
+     every 200ms) - blur layers and looping transforms made this visibly glitch.
+     Canonical source: E:\BirdThing\ancs\notify_widget.html
+============================================================================ -->
+<style>
+  #ancsWrap{position:fixed;top:0;left:0;right:0;z-index:200;display:flex;
+    flex-direction:column;align-items:center;gap:.5em;padding:.6em;
+    pointer-events:none;}
+  #ancsWrap.full{top:0;bottom:0;padding:0;gap:0;}
+
+  .ancs{pointer-events:auto;box-sizing:border-box;
+    font-family:'Inter',-apple-system,system-ui,"Helvetica Neue",sans-serif;
+    font-size:var(--ancs-fs,21px);
+    background:#1c1c1e;color:#f5f5f7;
+    border:1px solid rgba(255,255,255,.16);
+    opacity:0;transition:opacity .32s ease;}
+  .ancs.in{opacity:1;}
+  body.light .ancs,.ancs.light{background:#fff;color:#1c1c1e;
+    border-color:rgba(0,0,0,.12);}
+
+  /* ---- toast layout ---- */
+  .ancs.toast{width:100%;max-width:44em;display:flex;align-items:center;
+    gap:.8em;padding:.7em .95em;border-radius:.95em;
+    box-shadow:0 .5em 1.6em rgba(0,0,0,.5);}
+  .ancs.toast .ancs-ico{flex:0 0 auto;width:2.3em;height:2.3em;
+    border-radius:.62em;display:flex;align-items:center;justify-content:center;
+    font-size:1.15em;background:rgba(255,255,255,.14);}
+  body.light .ancs.toast .ancs-ico,.ancs.toast.light .ancs-ico{
+    background:rgba(0,0,0,.07);}
+  .ancs.toast .ancs-body{flex:1 1 auto;min-width:0;}
+  .ancs.toast .ancs-app{font-size:.62em;font-weight:600;letter-spacing:.09em;
+    text-transform:uppercase;opacity:.62;margin-bottom:.15em;}
+  .ancs.toast .ancs-title{font-size:1.12em;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;line-height:1.2;}
+  .ancs.toast .ancs-msg{font-size:.95em;opacity:.8;line-height:1.3;
+    margin-top:.12em;display:-webkit-box;-webkit-line-clamp:2;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  .ancs.toast.call{border-color:rgba(48,209,88,.6);}
+  .ancs.toast.call .ancs-ico{background:rgba(48,209,88,.22);color:#30d158;}
+
+  /* ---- fullscreen layout ---- */
+  .ancs.full{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;
+    border:0;border-radius:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;
+    padding:1em 1.2em;gap:.35em;
+    transition:opacity .9s ease;}   /* fade-out slower than fade-in */
+  .ancs.full.in{transition:opacity .3s ease;}
+  .ancs.full .ancs-ico{font-size:2.3em;line-height:1;margin-bottom:.15em;}
+  .ancs.full .ancs-app{font-size:.62em;font-weight:600;letter-spacing:.16em;
+    text-transform:uppercase;opacity:.6;}
+  .ancs.full .ancs-title{font-size:1.55em;font-weight:700;line-height:1.12;
+    max-width:96%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ancs.full .ancs-msg{font-size:.98em;opacity:.85;line-height:1.28;
+    max-width:94%;display:-webkit-box;-webkit-line-clamp:3;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  .ancs.full.call{background:#06240f;color:#eafff0;}
+  .ancs.full.call .ancs-app{color:#30d158;opacity:1;}
+  body.light .ancs.full.call,.ancs.full.call.light{background:#e8fbee;
+    color:#042c12;}
+
+  /* selected state for the injected settings buttons */
+  #settings .ancs-sel{background:var(--accent,#0a84ff)!important;
+    color:#fff!important;border-color:transparent!important;}
+
+  @media (prefers-reduced-motion:reduce){.ancs{transition:opacity .15s;}}
+
+  /* ---- persistent phone-link status glyph (top-right, like wifi/bluetooth) ---- */
+  #ancsStat{--s:1;pointer-events:none;display:inline-flex;align-items:center;
+    justify-content:center;position:relative;width:calc(1.15em*var(--s));
+    height:calc(1.15em*var(--s));flex:0 0 auto;color:currentColor;opacity:.32;
+    transition:opacity .4s ease;vertical-align:middle;}
+  #ancsStat.linked{opacity:.9;}
+  #ancsStat svg{width:100%;height:100%;display:block;}
+  #ancsStat .slash{opacity:1;transition:opacity .4s ease;}
+  #ancsStat.linked .slash{opacity:0;}
+  #ancsStat .badge{position:absolute;top:-.15em;right:-.2em;min-width:.95em;
+    height:.95em;padding:0 .16em;box-sizing:border-box;border-radius:.55em;
+    background:#ff3b30;color:#fff;font:600 .62em/.95em 'Inter',system-ui,sans-serif;
+    text-align:center;display:none;}
+  #ancsStat.has-badge .badge{display:block;}
+  /* fixed-corner fallback: no host status row to inherit a colour from, and
+     the page may be light OR dark - mid-grey at half opacity reads on both */
+  #ancsStat.fixed{position:fixed;z-index:180;width:22px;height:22px;
+    font-size:16px;color:#8a8a8e!important;opacity:.5;}
+  #ancsStat.fixed.linked{opacity:.95;}
+  #ancsStat.fixed.tr{top:6px;right:8px;}
+  #ancsStat.fixed.tl{top:6px;left:8px;}
+  #ancsStat.fixed.br{bottom:6px;right:8px;}
+  #ancsStat.fixed.bl{bottom:6px;left:8px;}
+  /* .anchored: JS pins top/right next to an existing status icon (e.g. the
+     WeatherThing's #btStatus) so the two never overlap */
+  #ancsStat.fixed.anchored{top:0;right:0;}
+  @keyframes ancsPing{0%{transform:scale(1);}35%{transform:scale(1.35);}100%{transform:scale(1);}}
+  #ancsStat.ping{animation:ancsPing .7s ease;}
+  #ancsStat.tappable{pointer-events:auto;cursor:pointer;}
+
+  /* ---- notification centre: swipe down from the top-right, or tap the glyph ---- */
+  #ancsCtrBack{position:fixed;inset:0;z-index:205;background:rgba(0,0,0,.45);
+    opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  #ancsCtrBack.open{opacity:1;pointer-events:auto;}
+  #ancsCtr{position:fixed;top:0;left:0;right:0;z-index:210;
+    max-height:88%;display:flex;flex-direction:column;
+    transform:translateY(-102%);transition:transform .28s cubic-bezier(.3,.9,.3,1);
+    font-family:'Inter',-apple-system,system-ui,sans-serif;
+    background:#111113;color:#f5f5f7;
+    border-bottom:1px solid rgba(255,255,255,.12);
+    box-shadow:0 1.2em 3em rgba(0,0,0,.55);}
+  #ancsCtr.open{transform:translateY(0);}
+  body.light #ancsCtr,#ancsCtr.light{background:#f4f4f6;color:#1c1c1e;
+    border-bottom-color:rgba(0,0,0,.12);}
+  #ancsCtr .ctr-head{flex:0 0 auto;display:flex;align-items:baseline;
+    justify-content:space-between;padding:calc(14px*var(--s,1)) calc(20px*var(--s,1)) calc(8px*var(--s,1));}
+  #ancsCtr .ctr-title{font-size:calc(15px*var(--s,1));font-weight:700;
+    letter-spacing:.03em;text-transform:uppercase;opacity:.7;}
+  #ancsCtr .ctr-hint{font-size:calc(12px*var(--s,1));opacity:.4;}
+  #ancsCtr .ctr-list{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    padding:0 calc(12px*var(--s,1)) calc(14px*var(--s,1));display:flex;
+    flex-direction:column;gap:calc(8px*var(--s,1));}
+  #ancsCtr .ctr-swipe{position:relative;overflow:hidden;border-radius:calc(14px*var(--s,1));
+    /* flex-shrink:0 is required, not cosmetic: .ctr-list is a column flex
+       container, and an overflow:hidden flex item's automatic minimum size
+       is 0 (spec quirk - overflow:visible items instead default to their
+       content size as the minimum) - without this every row got squashed
+       down to a fraction of its content height, clipping the message text. */
+    flex:0 0 auto;}
+  #ancsCtr .ctr-swipe-bg{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:flex-end;padding-right:calc(18px*var(--s,1));background:#ff3b30;
+    color:#fff;font-size:calc(13px*var(--s,1));font-weight:600;}
+  #ancsCtr .ctr-row{display:flex;gap:calc(11px*var(--s,1));align-items:flex-start;
+    /* OPAQUE, not translucent - this sits directly above .ctr-swipe-bg's red
+       "Clear" reveal, which a translucent row would let bleed through before
+       any swipe happened. Solid colour = rgba(255,255,255,.07) pre-blended
+       onto the panel's own #111113 background. */
+    background:#242426;border-radius:calc(14px*var(--s,1));
+    padding:calc(11px*var(--s,1)) calc(13px*var(--s,1));position:relative;
+    transition:transform .2s ease;touch-action:pan-y;}
+  body.light #ancsCtr .ctr-row,#ancsCtr.light .ctr-row{background:#e8e8ea;}
+  #ancsCtr .ctr-row.dragging{transition:none;}
+  /* knob-scroll focus ring - only visible while the knob is being used to
+     move through the list, matches the accent used elsewhere for selection */
+  #ancsCtr .ctr-row.focused{box-shadow:0 0 0 calc(2px*var(--s,1)) #0a84ff inset;}
+  body.light #ancsCtr .ctr-row.focused,#ancsCtr.light .ctr-row.focused{box-shadow:0 0 0 calc(2px*var(--s,1)) #007aff inset;}
+  #ancsCtr .ctr-msg.expanded{-webkit-line-clamp:unset;}
+  #ancsCtr .ctr-clearall{flex:0 0 auto;align-self:center;margin:calc(4px*var(--s,1)) 0 0;
+    padding:calc(9px*var(--s,1)) calc(18px*var(--s,1));border-radius:999px;border:0;
+    background:rgba(255,59,48,.16);color:#ff453a;font:600 calc(13px*var(--s,1))/1 'Inter',system-ui,sans-serif;
+    letter-spacing:.02em;}
+  body.light #ancsCtr .ctr-clearall,#ancsCtr.light .ctr-clearall{background:rgba(255,59,48,.12);color:#d70015;}
+  #ancsCtr .ctr-ico{flex:0 0 auto;width:calc(30px*var(--s,1));height:calc(30px*var(--s,1));
+    border-radius:calc(8px*var(--s,1));display:flex;align-items:center;
+    justify-content:center;font-size:calc(16px*var(--s,1));background:rgba(255,255,255,.12);}
+  body.light #ancsCtr .ctr-ico,#ancsCtr.light .ctr-ico{background:rgba(0,0,0,.08);}
+  #ancsCtr .ctr-body{flex:1 1 auto;min-width:0;}
+  #ancsCtr .ctr-top{display:flex;justify-content:space-between;gap:8px;
+    font-size:calc(11px*var(--s,1));font-weight:600;letter-spacing:.06em;
+    text-transform:uppercase;opacity:.55;margin-bottom:calc(2px*var(--s,1));}
+  #ancsCtr .ctr-name{font-size:calc(15px*var(--s,1));font-weight:600;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #ancsCtr .ctr-msg{font-size:calc(13.5px*var(--s,1));opacity:.82;line-height:1.32;
+    margin-top:calc(2px*var(--s,1));display:-webkit-box;-webkit-line-clamp:4;
+    -webkit-box-orient:vertical;overflow:hidden;}
+  #ancsCtr .ctr-empty{padding:calc(30px*var(--s,1)) 0 calc(40px*var(--s,1));
+    text-align:center;opacity:.4;font-size:calc(14px*var(--s,1));}
+  #ancsCtr .ctr-grip{flex:0 0 auto;align-self:center;width:38px;height:4px;
+    border-radius:2px;background:rgba(255,255,255,.25);margin:calc(7px*var(--s,1)) 0 0;}
+  body.light #ancsCtr .ctr-grip,#ancsCtr.light .ctr-grip{background:rgba(0,0,0,.2);}
+</style>
+<script>
+(function(){
+  var URL_ = window.ANCS_URL || '/api/notify';
+  // Which screen this is, so the central per-device on/off can address it.
+  // Set at patch time: birdthing | weatherthing | kiosk.
+  var DEVICE = window.ANCS_DEVICE || 'birdthing';
+  // Central settings, delivered inside the notification feed itself so there
+  // is no second request. Local prefs stay for per-screen cosmetics (size,
+  // full-screen); anything that must be the SAME everywhere lives here.
+  var CENTRAL = null;
+  var POLL = window.ANCS_POLL_MS || 2500;
+  var BASE_FS = window.ANCS_FS || '21px';
+  var DEF_FULL = window.ANCS_STYLE === 'full';
+
+  // ---- user settings (host page's Settings screen writes these) ----
+  function ls(k, d){ try { var v = localStorage.getItem(k);
+    return v === null ? d : v; } catch(e){ return d; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+
+  var S = {
+    on:    ls('ancsOn','1') === '1',
+    scale: parseFloat(ls('ancsScale','1')) || 1,
+    full:  ls('ancsFull', DEF_FULL ? '1' : '0') === '1',
+    hold:  parseInt(ls('ancsHold','6'), 10) || 6
+  };
+
+  var wrap = document.createElement('div');
+  wrap.id = 'ancsWrap';
+  document.body.appendChild(wrap);
+
+  function applyStyle(){
+    wrap.className = S.full ? 'full' : '';
+    // the host's own scale variable is inside BASE_FS, so this multiplies the
+    // screen's real typography by the user's notification-size preference
+    wrap.style.setProperty('--ancs-fs',
+      'calc((' + BASE_FS + ') * ' + S.scale + ')');
+  }
+  applyStyle();
+
+  // ---- persistent phone-link status glyph -------------------------------
+  // Shows in the top-right of every display, next to the wifi/bluetooth-style
+  // indicators: a phone icon that is bright when the iPhone is linked to the
+  // ANCS hub and dimmed+slashed when it is not, with a red count badge for how
+  // many notifications the phone is currently showing. window.ANCS_STATUS_SLOT
+  // is a CSS selector to place it inline inside the host's own status row;
+  // window.ANCS_STATUS ('tr'|'tl'|'br'|'bl'|'off') is the fixed-corner
+  // fallback used when no slot is found. Default: inline if a known status row
+  // exists, else fixed top-right.
+  var STAT_SLOT   = window.ANCS_STATUS_SLOT || null;
+  var STAT_ANCHOR = window.ANCS_STATUS_ANCHOR || null;  // sit just left of this element
+  var STAT_POS    = window.ANCS_STATUS || 'tr';
+  var statEl = null, statBadge = null, lastCount = -1, statLinked = null;
+
+  function buildStat(){
+    if (STAT_POS === 'off') return;
+    var host = null;
+    if (STAT_SLOT) host = document.querySelector(STAT_SLOT);
+    if (!host && !STAT_ANCHOR) {
+      var known = ['.top .tr', '.status-stack', '.statusbar', '#statusbar',
+                   '.status-icons', '.sysicons', '#sysbar'];
+      for (var i = 0; i < known.length && !host; i++)
+        host = document.querySelector(known[i]);
+    }
+    statEl = document.createElement('span');
+    statEl.id = 'ancsStat';
+    // inherit the host status row's colour when slotted in; when slotted into a
+    // light page that has no body.light, force a dark glyph. The fixed-corner
+    // fallback ignores this (its CSS pins a mid-grey that works on any bg).
+    if (host && window.ANCS_THEME === 'light') statEl.style.color = '#1c1c1e';
+    // phone outline + a slash line that hides when linked
+    statEl.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+      + 'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<rect x="7" y="2" width="10" height="20" rx="2.2"></rect>'
+      + '<line x1="11" y1="18" x2="13" y2="18"></line>'
+      + '<line class="slash" x1="3" y1="21" x2="21" y2="3"></line></svg>'
+      + '<span class="badge">0</span>';
+    statBadge = statEl.querySelector('.badge');
+    statEl.classList.add('tappable');
+    statEl.addEventListener('click', function(e){ e.stopPropagation(); toggleCenter(); });
+    if (host) {
+      host.appendChild(statEl);
+      return;
+    }
+    var anchor = STAT_ANCHOR ? document.querySelector(STAT_ANCHOR) : null;
+    if (anchor) {
+      statEl.className = 'fixed anchored';
+      document.body.appendChild(statEl);
+      var place = function(){
+        var r = anchor.getBoundingClientRect();
+        if (!r.width && !r.height) return;   // anchor not laid out yet
+        statEl.style.top = Math.round(r.top + r.height / 2
+          - statEl.offsetHeight / 2) + 'px';
+        statEl.style.right = Math.round(window.innerWidth - r.left + 10) + 'px';
+      };
+      place();
+      setTimeout(place, 400);
+      setTimeout(place, 1500);
+      window.addEventListener('resize', place);
+    } else {
+      statEl.className = 'fixed ' + STAT_POS;
+      document.body.appendChild(statEl);
+    }
+  }
+
+  function statSet(linked, count){
+    if (!statEl) return;
+    if (linked !== statLinked) {
+      statEl.classList.toggle('linked', !!linked);
+      statLinked = linked;
+    }
+    count = count || 0;
+    if (count !== lastCount) {
+      statBadge.textContent = count > 9 ? '9+' : String(count);
+      statEl.classList.toggle('has-badge', count > 0);
+      if (count > lastCount && lastCount >= 0) {
+        statEl.classList.remove('ping');
+        void statEl.offsetWidth;            // restart the animation
+        statEl.classList.add('ping');
+      }
+      lastCount = count;
+    }
+  }
+
+  // seen[uid] = { el?, timer?, full?, seeded? }  - this session's live view.
+  var seen = Object.create(null);
+  var queue = [], current = null;
+
+  // -- reload-safe "already handled" set --------------------------------
+  // The displays reload a lot (kiosk-watchdog relaunch, crash, network blip,
+  // deploy). Seeding the WHOLE feed as "seen" on the first poll after every
+  // load ate any notification that arrived in the reload gap - already in the
+  // feed on that first poll, so it never toasted.
+  // We remember handled ids in localStorage. The id is the gateway's
+  // `disp_uid`: a per-process counter seeded from int(time()*1000), so it is
+  // monotonic within a run and a restart jumps it forward past every earlier
+  // value - no cross-session collision. Pruned to 24h.
+  // IMPORTANT: this only decides "already TOASTED once" - it must never be the
+  // reason a fresh notification is skipped. New notifications always get a
+  // brand-new (higher) disp_uid, so they are never in this set.
+  // V2: V1 accumulated recycled disp_uids while the gateway had the
+  // EVT_ADDED-merges-into-a-reused-uid bug; abandon it wholesale.
+  var SEEN_KEY = 'ancsSeenV2';
+  function loadSeen(){
+    var out = Object.create(null);
+    try {
+      localStorage.removeItem('ancsSeenV1');
+      var raw = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+      var cut = Date.now() - 864e5;
+      for (var k in raw) if (raw[k] > cut) out[k] = raw[k];
+    } catch(e){}
+    return out;
+  }
+  var seenTs = loadSeen();
+  var seenDirty = false, seenSaveAt = 0;
+  function markSeen(uid){
+    if (seenTs[uid] !== undefined) return;
+    seenTs[uid] = Date.now(); seenDirty = true;
+  }
+  function flushSeen(){
+    if (!seenDirty) return;
+    var now = Date.now();
+    if (now - seenSaveAt < 1500) return;
+    seenSaveAt = now; seenDirty = false;
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify(seenTs)); } catch(e){}
+  }
+  // First run ever (nothing remembered): don't replay a backlog as a stack of
+  // toasts - only surface ones from the last ~30s.
+  var COLD_START = true;
+  for (var _k in seenTs) { COLD_START = false; break; }
+
+  var GLYPH = {IncomingCall:'\u{1F4DE}', MissedCall:'\u{1F4F5}', Voicemail:'\u{1F4FC}',
+    Social:'\u{1F4AC}', Schedule:'\u{1F4C5}', Email:'\u2709\uFE0F', News:'\u{1F4F0}',
+    HealthAndFitness:'\u2764\uFE0F', BusinessAndFinance:'\u{1F4B3}',
+    Location:'\u{1F4CD}', Entertainment:'\u{1F3AC}', Other:'\u{1F514}'};
+  var APP_GLYPH = {Messages:'\u{1F4AC}', WhatsApp:'\u{1F4AC}', Phone:'\u{1F4DE}',
+    FaceTime:'\u{1F4F9}', Mail:'\u2709\uFE0F', Gmail:'\u2709\uFE0F',
+    Calendar:'\u{1F4C5}', Clock:'\u23F0', Findmy:'\u{1F4CD}', Myq:'\u{1F6AA}'};
+  function glyph(n){ return APP_GLYPH[n.app] || GLYPH[n.cat] || GLYPH.Other; }
+
+  function fmtAge(sec){
+    sec = Math.max(0, Math.round(sec || 0));
+    if (sec < 45)   return 'now';
+    if (sec < 3600) return Math.round(sec / 60) + 'm ago';
+    if (sec < 86400) return Math.round(sec / 3600) + 'h ago';
+    return Math.round(sec / 86400) + 'd ago';
+  }
+
+  // ---- notification centre: swipe down from the top-right (or tap the glyph)
+  // to see everything still on the phone, iOS-style. Uses the same feed the
+  // toasts do; a row = a notification the phone has NOT cleared.
+  var ctr = null, ctrBack = null, ctrList = null, ctrOpen = false, ctrItems = [];
+  function buildCenter(){
+    ctrBack = document.createElement('div'); ctrBack.id = 'ancsCtrBack';
+    ctr = document.createElement('div'); ctr.id = 'ancsCtr';
+    if (window.ANCS_THEME === 'light') ctr.classList.add('light');
+    // scale the panel's px sizes to this screen's notification typography
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;font-size:calc((' + BASE_FS + ')*' + S.scale + ')';
+    probe.textContent = 'x'; document.body.appendChild(probe);
+    var fs = parseFloat(getComputedStyle(probe).fontSize) || 21;
+    document.body.removeChild(probe);
+    ctr.style.setProperty('--s', Math.max(0.85, Math.min(2.4, fs / 21)));
+    ctr.innerHTML =
+      '<div class="ctr-head"><span class="ctr-title">Phone</span>'
+      + '<span class="ctr-hint">swipe up to close</span></div>'
+      + '<div class="ctr-list"></div>'
+      + '<button type="button" class="ctr-clearall">Clear All</button>'
+      + '<div class="ctr-grip"></div>';
+    ctrList = ctr.querySelector('.ctr-list');
+    ctr.querySelector('.ctr-clearall').addEventListener('click', function(e){
+      e.stopPropagation(); clearNotif(null);
+    });
+    document.body.appendChild(ctrBack);
+    document.body.appendChild(ctr);
+
+    ctrBack.addEventListener('click', function(){ closeCenter(false); });
+    ctr.addEventListener('click', function(e){ e.stopPropagation(); });
+
+    // Swipe DOWN starting in the top-right corner -> open. Listeners are on
+    // document and gated by where the touch starts, and they only ever fire on
+    // a clear vertical drag - a TAP moves nothing, so the host's own top-bar
+    // controls (the clock, etc.) keep working untouched.
+    var sy = 0, sx = 0, arm = 0;   // arm: 1 = open-swipe candidate, 2 = close-swipe
+    document.addEventListener('touchstart', function(e){
+      var t = e.touches[0]; sy = t.clientY; sx = t.clientX; arm = 0;
+      if (ctrOpen) { arm = 2; return; }
+      if (t.clientY < Math.max(46, innerHeight * 0.09) &&
+          t.clientX > innerWidth * 0.6) arm = 1;
+    }, {passive:true});
+    document.addEventListener('touchmove', function(e){
+      if (!arm) return;
+      var t = e.touches[0], dy = t.clientY - sy, dx = t.clientX - sx;
+      if (arm === 1 && dy > 36 && dy > Math.abs(dx)) { arm = 0; openCenter(); }
+      else if (arm === 2 && sy - t.clientY > 44) { arm = 0; closeCenter(); }
+    }, {passive:true});
+    document.addEventListener('touchend', function(){ arm = 0; }, {passive:true});
+  }
+  function openCenter(){
+    if (!ctr) return;
+    ctrOpen = true;
+    ctrFocusIdx = 0;
+    renderCenter(ctrItems);
+    ctr.classList.add('open'); ctrBack.classList.add('open');
+  }
+  function closeCenter(goHome){
+    ctrOpen = false;
+    if (ctr) { ctr.classList.remove('open'); ctrBack.classList.remove('open'); }
+    // The physical "back" button (Escape, distinct from the knob's own
+    // press/Enter) both closes this overlay AND drops whatever the host page
+    // was showing underneath back to its home/live view - not just whatever
+    // view happened to be open behind the notification centre.
+    if (goHome) {
+      try {
+        if (typeof closeAllOverlays === 'function') closeAllOverlays();
+        if (typeof goLive === 'function') goLive();
+      } catch (e) {}
+    }
+  }
+  function toggleCenter(){ ctrOpen ? closeCenter(false) : openCenter(); }
+
+  // ---- knob navigation while the centre is open ----------------------------
+  // Rotation is bridged in as ArrowUp/ArrowDown key events (same mechanism the
+  // host page's own knob-scroll uses); the knob's own press arrives as Enter;
+  // the separate physical button below the knob arrives as Escape. Captured
+  // (not bubble phase) and stopped here so none of it also reaches the host
+  // page's keydown handler while the centre is on screen.
+  var ctrFocusIdx = 0, ctrRows = [];
+  function ctrApplyFocus(){
+    ctrRows.forEach(function(r, i){ r.classList.toggle('focused', i === ctrFocusIdx); });
+    if (ctrRows[ctrFocusIdx]) ctrRows[ctrFocusIdx].scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+  function ctrMoveFocus(delta){
+    if (!ctrRows.length) return;
+    ctrFocusIdx = Math.max(0, Math.min(ctrRows.length - 1, ctrFocusIdx + delta));
+    ctrApplyFocus();
+  }
+  document.addEventListener('keydown', function(e){
+    if (!ctrOpen) return;
+    var k = e.key;
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Escape' && k !== 'Backspace' && k !== 'Enter') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+    if (k === 'Escape' || k === 'Backspace') { closeCenter(true); return; }
+    if (k === 'ArrowDown') { ctrMoveFocus(1); return; }
+    if (k === 'ArrowUp') { ctrMoveFocus(-1); return; }
+    if (k === 'Enter' && ctrRows[ctrFocusIdx]) { ctrRows[ctrFocusIdx].click(); return; }
+  }, true);
+
+  // "Clear" a display-side dismiss - hides it here (and, once the next poll
+  // lands on every screen, everywhere) but CANNOT reach the phone's own
+  // Notification Centre: ANCS has no accessory-initiated remove, only the
+  // phone-to-accessory EVT_REMOVED this widget already listens for. uid=null
+  // clears everything currently listed; a real uid clears just that row.
+  var CLEAR_URL = window.ANCS_CLEAR_URL || '/api/notifyclear';
+  function clearNotif(uid){
+    // optimistic local hide so it feels instant on the screen you tapped
+    ctrItems.forEach(function(n){ if (uid === null || n.uid === uid) n._dismissedLocal = true; });
+    renderCenter(ctrItems);
+    fetch(CLEAR_URL + (uid !== null ? ('?uid=' + uid) : ''), {cache:'no-store'}).catch(function(){});
+  }
+
+  function renderCenter(items){
+    ctrItems = items || ctrItems;
+    if (!ctrOpen || !ctrList) return;
+    var live = ctrItems.filter(function(n){
+      return !n.removed_ts && n.active !== false && !n.dismissed_ts && !n._dismissedLocal;
+    });
+    ctrRows = [];
+    if (!live.length) {
+      ctrList.innerHTML = '<div class="ctr-empty">No notifications</div>';
+      return;
+    }
+    ctrList.textContent = '';
+    live.forEach(function(n){
+      var wrap2 = document.createElement('div'); wrap2.className = 'ctr-swipe';
+      var bg = document.createElement('div'); bg.className = 'ctr-swipe-bg';
+      bg.textContent = 'Clear';
+      var row = document.createElement('div'); row.className = 'ctr-row';
+      row.innerHTML = '<div class="ctr-ico"></div><div class="ctr-body">'
+        + '<div class="ctr-top"><span class="ctr-app"></span><span class="ctr-age"></span></div>'
+        + '<div class="ctr-name"></div>'
+        + (n.message ? '<div class="ctr-msg"></div>' : '') + '</div>';
+      row.querySelector('.ctr-ico').textContent = glyph(n);
+      row.querySelector('.ctr-app').textContent = n.call ? 'Call' : (n.app || '');
+      row.querySelector('.ctr-age').textContent = fmtAge(n.age);
+      row.querySelector('.ctr-name').textContent = n.title || n.app || 'Notification';
+      var msgEl = n.message ? row.querySelector('.ctr-msg') : null;
+      if (msgEl) msgEl.textContent = n.message;
+      // tap a row to expand its message (line-clamp lifted) and show the
+      // exact time; tapping again collapses. A drag (see below) is not a tap.
+      var rowMoved = false;
+      row.addEventListener('click', function(){
+        if (rowMoved) { rowMoved = false; return; }
+        var wasExpanded = row.classList.contains('expanded');
+        row.classList.toggle('expanded', !wasExpanded);
+        if (msgEl) msgEl.classList.toggle('expanded', !wasExpanded);
+        row.querySelector('.ctr-age').textContent = wasExpanded
+          ? fmtAge(n.age)
+          : new Date((n.ts || 0) * 1000).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+      });
+      // swipe LEFT on a row to clear just that one - iOS-style reveal.
+      var rsx = 0, rsy = 0, rdx = 0, rarm = false;
+      row.addEventListener('touchstart', function(e){
+        var t = e.touches[0]; rsx = t.clientX; rsy = t.clientY; rdx = 0; rarm = false;
+        row.classList.add('dragging');
+      }, {passive:true});
+      row.addEventListener('touchmove', function(e){
+        var t = e.touches[0], dx = t.clientX - rsx, dy = t.clientY - rsy;
+        if (!rarm && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) rarm = true;
+        if (!rarm) return;
+        rdx = Math.min(0, dx); rowMoved = true;
+        row.style.transform = 'translateX(' + rdx + 'px)';
+      }, {passive:true});
+      row.addEventListener('touchend', function(){
+        row.classList.remove('dragging');
+        if (rdx < -70) {
+          row.style.transform = 'translateX(-100%)';
+          setTimeout(function(){ clearNotif(n.uid); }, 180);
+        } else {
+          row.style.transform = 'translateX(0)';
+        }
+      }, {passive:true});
+      wrap2.appendChild(bg); wrap2.appendChild(row);
+      ctrList.appendChild(wrap2);
+      ctrRows.push(row);
+    });
+    if (ctrFocusIdx >= ctrRows.length) ctrFocusIdx = ctrRows.length - 1;
+    if (ctrFocusIdx < 0) ctrFocusIdx = 0;
+    ctrApplyFocus();
+  }
+
+  function build(n, full){
+    var el = document.createElement('div');
+    el.className = 'ancs ' + (full ? 'full' : 'toast')
+      + (n.call ? ' call' : '')
+      + (window.ANCS_THEME === 'light' ? ' light' : '');
+    var who = n.title || n.app || 'Notification';
+    var sub = (n.subtitle && n.subtitle !== who) ? n.subtitle : '';
+    var msg = n.call ? (n.message || sub || 'Incoming call')
+                     : (n.message || sub || '');
+    el.innerHTML = '<div class="ancs-ico"></div><div class="ancs-body">'
+      + '<div class="ancs-app"></div><div class="ancs-title"></div>'
+      + (msg ? '<div class="ancs-msg"></div>' : '') + '</div>';
+    if (full) {   // fullscreen centres the parts directly, no inner column
+      var b = el.querySelector('.ancs-body');
+      while (b.firstChild) el.insertBefore(b.firstChild, b);
+      el.removeChild(b);
+    }
+    // textContent everywhere - notification text is untrusted, never innerHTML
+    el.querySelector('.ancs-ico').textContent = glyph(n);
+    el.querySelector('.ancs-app').textContent =
+      n.call ? 'Incoming call' : (n.app || '');
+    el.querySelector('.ancs-title').textContent = who;
+    if (msg) el.querySelector('.ancs-msg').textContent = msg;
+    el.addEventListener('click', function(){ dismiss(n.uid); });
+    return el;
+  }
+
+  function dismiss(uid){
+    var rec = seen[uid];
+    if (!rec || !rec.el) return;
+    if (rec.timer) { clearTimeout(rec.timer); rec.timer = null; }
+    var el = rec.el, wasFull = rec.full;
+    rec.el = null;
+    if (current === uid) current = null;
+    el.classList.remove('in');
+    setTimeout(function(){
+      if (el.parentNode) el.parentNode.removeChild(el);
+      if (wasFull) next();
+    }, 950);
+  }
+
+  function present(n){
+    var full = S.full;
+    var el = build(n, full);
+    wrap.appendChild(el);
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ el.classList.add('in'); });
+    });
+    var rec = seen[n.uid] || (seen[n.uid] = {});
+    rec.el = el; rec.full = full;
+    if (full) current = n.uid;
+    var hold = (CENTRAL && CENTRAL.hold_seconds) ? CENTRAL.hold_seconds : S.hold;
+    var ms = (n.call ? Math.max(hold, 20) : hold) * 1000;
+    rec.timer = setTimeout(function(){ dismiss(n.uid); }, ms);
+  }
+
+  function next(){
+    if (current !== null || !queue.length) return;
+    present(queue.shift());
+  }
+  function show(n){
+    markSeen(n.uid);
+    if (!S.on) { seen[n.uid] = {seeded:true}; return; }
+    if (S.full) { queue.push(n); next(); } else present(n);
+  }
+
+  function update(n){
+    var rec = seen[n.uid];
+    if (!rec || !rec.el) return;
+    var t = rec.el.querySelector('.ancs-title');
+    if (t && n.title && t.textContent !== n.title) t.textContent = n.title;
+    var m = rec.el.querySelector('.ancs-msg');
+    if (m && n.message && m.textContent !== n.message) m.textContent = n.message;
+  }
+
+  // 2026-10-02: robustness against a flaky link (found live on the WeatherThing:
+  // swipe-down list showed the notification, but the pop-up never did).
+  //  - an ok:false/empty reply from the proxy means "could not reach the gateway",
+  //    NOT "no notifications" - acting on it used to retract the toast on screen
+  //    (and the item was then never re-shown), so such replies are now skipped;
+  //  - a toast is only retracted for being absent from the feed after it has been
+  //    missing from 2 consecutive GOOD replies (the hold timer removes it anyway);
+  //  - the toast queue self-heals if `current` ever points at nothing;
+  //  - one bad item can't stop the rest, errors are logged instead of swallowed;
+  //  - polls never overlap (a slow link used to stack parallel ticks).
+  var busy = false, busyAt = 0, failN = 0, lastGood = 0;
+  function healQueue(){
+    if (current !== null) {
+      var rc = seen[current];
+      if (!rc || !rc.el) current = null;
+    }
+    next();
+  }
+  function tick(){
+    var nowT = (window.performance && performance.now) ? performance.now() : 0;
+    if (busy && nowT - busyAt < 9000) return;
+    busy = true; busyAt = nowT;
+    fetch(URL_, {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d) return;
+        if (d.ok === false) {
+          // gateway unreachable from the proxy: keep everything exactly as it is.
+          // Only after ~15 s of consecutive failures say the phone link is unknown.
+          failN++;
+          if (failN === 6) statSet(false, 0);
+          return;
+        }
+        failN = 0; lastGood = nowT;
+        // badge = notifications the phone is STILL showing. The gateway keeps
+        // recently-cleared ones in the feed (active:true, removed_ts set) so it
+        // can de-dupe and show "recent" - counting the raw list makes the badge
+        // stick at its high-water mark and never come down when you clear them
+        // on the phone. Count only the ones with no removal and not gone inactive.
+        var lc = 0, _it = d.items || [];
+        for (var _i = 0; _i < _it.length; _i++)
+          if (!_it[_i].removed_ts && _it[_i].active !== false && !_it[_i].dismissed_ts) lc++;
+        statSet(d.linked, lc);
+        renderCenter(_it);
+        if (!d.items) return;
+        var live = Object.create(null);
+        if (d.settings) { CENTRAL = d.settings; markCentral(); }
+        // Central per-device switch: this screen is turned off from the
+        // BirdThing settings screen. Remember everything so nothing replays in
+        // a burst when it is switched back on.
+        if (CENTRAL && CENTRAL.devices && CENTRAL.devices[DEVICE] === false) {
+          // take down anything currently on screen FIRST - overwriting its record
+          // below would orphan the element (and leave `current` stuck)
+          Object.keys(seen).forEach(function(u){ if (seen[u] && seen[u].el) dismiss(u); });
+          d.items.forEach(function(n){ seen[n.uid] = {seeded:true}; markSeen(n.uid); });
+          flushSeen();
+          healQueue();
+          return;
+        }
+        d.items.forEach(function(n){ live[n.uid] = n; });
+        healQueue();
+        d.items.forEach(function(n){ try {
+          var rec = seen[n.uid];
+          if (rec && rec.el) {                       // currently on screen
+            // a phone-side clear (removed_ts) must NOT retract a toast that is
+            // mid-hold - someone across the room may be reading it. Only a
+            // call ending (active:false), or an explicit "Clear" tapped on
+            // ANY of the displays (dismissed_ts), pulls its banner.
+            if (n.active === false || n.dismissed_ts) dismiss(n.uid);
+            else update(n);
+            return;
+          }
+          if (rec || seenTs[n.uid] !== undefined) {  // already toasted (this load or a prior one)
+            if (!rec) seen[n.uid] = {seeded:true};
+            return;
+          }
+          // Brand new to us. Toast it if it is a real, recent arrival - EVEN
+          // IF the phone has since cleared it. The user glancing at a text on
+          // their phone a second after it lands must not stop it reaching the
+          // room displays; that is the whole point of these screens, and the
+          // gateway keeps such items in the feed (active:true) for exactly
+          // this. removed_ts only affects the badge count, never the toast.
+          var age = (typeof n.age === 'number') ? n.age : 999;
+          var withinColdWindow = !COLD_START || age < 30;
+          if (n.fresh && withinColdWindow && n.active !== false) {
+            seen[n.uid] = {}; show(n);               // show() calls markSeen()
+          } else {
+            seen[n.uid] = {seeded:true}; markSeen(n.uid);
+          }
+        } catch (ie) { try { console.error('ancs item', ie); } catch(_){} } });
+        Object.keys(seen).forEach(function(uid){
+          var r = seen[uid];
+          if (!r || !r.el) return;
+          if (live[uid]) { r.miss = 0; return; }
+          r.miss = (r.miss || 0) + 1;                // absent from this GOOD reply
+          if (r.miss >= 2) dismiss(uid);
+        });
+        COLD_START = false;
+        flushSeen();
+      })
+      .catch(function(e){ try { console.error('ancs tick', e); } catch(_){} })
+      .then(function(){ busy = false; });
+  }
+
+  // ---------------- settings rows, injected into the host's panel ----------
+  function injectSettings(){
+    var body = document.querySelector('#settings .vbody');
+    if (!body || document.getElementById('ancsSet')) return;
+
+    // the two dashboards use different class names for the same thing
+    var labelCls = body.querySelector('.sk') ? 'sk' : 'lbl';
+    var segCls   = body.querySelector('.seg2') ? 'seg2' : 'seg';
+
+    function row(label, extraId){
+      var d = document.createElement('div');
+      d.className = 'srow';
+      d.innerHTML = '<span class="' + labelCls + '"></span>';
+      d.firstChild.textContent = label;
+      if (extraId) {
+        var s = document.createElement('span');
+        s.id = extraId;
+        s.style.cssText = 'color:var(--sec,#888);font-weight:600;'
+          + 'letter-spacing:0;margin-left:6px';
+        d.firstChild.appendChild(s);
+      }
+      return d;
+    }
+    function seg(buttons){
+      var g = document.createElement('div');
+      g.className = segCls;
+      buttons.forEach(function(b){
+        var el = document.createElement('button');
+        el.textContent = b[0];
+        el.onclick = b[1];
+        if (b[2]) el.dataset.ancs = b[2];
+        g.appendChild(el);
+      });
+      return g;
+    }
+
+    var wrapEl = document.createElement('div');
+    wrapEl.id = 'ancsSet';
+
+    var head = row('Phone notifications');
+    head.appendChild(seg([
+      ['On',  function(){ S.on = true;  lsSet('ancsOn','1'); mark(); }, 'on1'],
+      ['Off', function(){ S.on = false; lsSet('ancsOn','0'); mark(); }, 'on0']
+    ]));
+    wrapEl.appendChild(head);
+
+    var sz = row('Notification size', 'ancsPct');
+    var bw = document.createElement('div');
+    bw.className = 'bwrap';
+    [['\u2212', function(){ setScale(S.scale - 0.1); }],
+     ['+',      function(){ setScale(S.scale + 0.1); }],
+     ['Reset',  function(){ setScale(1); }]].forEach(function(b, i){
+      var el = document.createElement('button');
+      el.className = 'bbtn';
+      el.textContent = b[0];
+      el.onclick = b[1];
+      if (i === 2) el.style.cssText = 'width:auto;padding:13px 20px';
+      bw.appendChild(el);
+    });
+    sz.appendChild(bw);
+    wrapEl.appendChild(sz);
+
+    var fs = row('Full screen');
+    fs.appendChild(seg([
+      ['On',  function(){ S.full = true;  lsSet('ancsFull','1'); applyStyle(); mark(); }, 'f1'],
+      ['Off', function(){ S.full = false; lsSet('ancsFull','0'); applyStyle(); mark(); }, 'f0']
+    ]));
+    var hint = document.createElement('span');
+    hint.className = 'about';
+    hint.style.cssText = 'padding:4px 4px 0';
+    hint.textContent = 'On: the alert takes over the whole screen, then fades '
+      + 'away. Off: a banner across the top.';
+    fs.appendChild(hint);
+    wrapEl.appendChild(fs);
+
+    // ---- CENTRAL settings ------------------------------------------------
+    // These live on the gateway and apply to EVERY screen, so they are only
+    // offered here on the BirdThing dashboard - it is the one screen whose
+    // origin can write them (the others proxy the feed read-only). Setting
+    // "how long" and "which screens" in one place is the entire point.
+    if (DEVICE === 'birdthing') {
+      var hd = row('Show for', 'ancsSec');
+      var hb = document.createElement('div');
+      hb.className = 'bwrap';
+      [['-', function(){ bumpHold(-1); }],
+       ['+', function(){ bumpHold(1); }]].forEach(function(b){
+        var el = document.createElement('button');
+        el.className = 'bbtn';
+        el.textContent = b[0];
+        el.onclick = b[1];
+        hb.appendChild(el);
+      });
+      hd.appendChild(hb);
+      var hh = document.createElement('span');
+      hh.className = 'about';
+      hh.style.cssText = 'padding:4px 4px 0';
+      hh.textContent = 'How long each alert stays on screen, on every display. '
+        + 'Incoming calls always stay at least 20s.';
+      hd.appendChild(hh);
+      wrapEl.appendChild(hd);
+
+      var mb = row('Message text');
+      mb.appendChild(seg([
+        ['Show', function(){ centralSet('show_body=1'); }, 'mb1'],
+        ['Hide', function(){ centralSet('show_body=0'); }, 'mb0']
+      ]));
+      var mh = document.createElement('span');
+      mh.className = 'about';
+      mh.style.cssText = 'padding:4px 4px 0';
+      mh.textContent = 'Hide shows only who it is from. The text is dropped at '
+        + 'the gateway, so it never reaches any screen.';
+      mb.appendChild(mh);
+      wrapEl.appendChild(mb);
+
+      var dl = document.createElement('div');
+      dl.className = 'srow';
+      var dlk = document.createElement('span');
+      dlk.className = 'sk';
+      dlk.textContent = 'Show notifications on';
+      dl.appendChild(dlk);
+      [['birdthing', 'This screen (BirdThing)'],
+       ['weatherthing', 'Bedroom WeatherThing'],
+       ['kiosk', 'Bedroom weather station']].forEach(function(d){
+        var r2 = document.createElement('div');
+        r2.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 4px';
+        var lab = document.createElement('span');
+        lab.textContent = d[1];
+        lab.style.cssText = 'font-size:.92em;opacity:.85';
+        r2.appendChild(lab);
+        r2.appendChild(seg([
+          ['On',  function(){ centralSet('dev_' + d[0] + '=1'); }, 'd1_' + d[0]],
+          ['Off', function(){ centralSet('dev_' + d[0] + '=0'); }, 'd0_' + d[0]]
+        ]));
+        dl.appendChild(r2);
+      });
+      wrapEl.appendChild(dl);
+    }
+
+    body.appendChild(wrapEl);
+    mark();
+    markCentral();
+    if (DEVICE === 'birdthing') {
+      // pull current values so the panel is never blank when first opened
+      fetch('/api/notifyset', {cache:'no-store'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d && d.settings) { CENTRAL = d.settings; markCentral(); } })
+        .catch(function(){});
+    }
+  }
+
+  function setScale(v){
+    S.scale = Math.max(0.6, Math.min(3, Math.round(v * 10) / 10));
+    lsSet('ancsScale', S.scale); applyStyle(); mark();
+  }
+  // Writes go through the BirdThing API, which proxies to the gateway; the
+  // other screens have no route to :8099 at all.
+  function centralSet(qs){
+    fetch('/api/notifyset?' + qs, {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d && d.settings) { CENTRAL = d.settings; markCentral(); } })
+      .catch(function(){});
+  }
+  function bumpHold(dir){
+    var cur = (CENTRAL && CENTRAL.hold_seconds) ? CENTRAL.hold_seconds : S.hold;
+    var next = Math.max(2, Math.min(60, cur + dir * (cur >= 20 ? 5 : 2)));
+    centralSet('hold=' + next);
+  }
+  function markCentral(){
+    if (!CENTRAL) return;
+    var s2 = document.getElementById('ancsSec');
+    if (s2) s2.textContent = CENTRAL.hold_seconds + 's';
+    var q = document.querySelectorAll('#ancsSet button[data-ancs]');
+    Array.prototype.forEach.call(q, function(b){
+      var k = b.dataset.ancs, on = null;
+      if (k === 'mb1') on = CENTRAL.show_body !== false;
+      else if (k === 'mb0') on = CENTRAL.show_body === false;
+      else if (k.indexOf('d1_') === 0) on = (CENTRAL.devices || {})[k.slice(3)] !== false;
+      else if (k.indexOf('d0_') === 0) on = (CENTRAL.devices || {})[k.slice(3)] === false;
+      if (on !== null) b.classList.toggle('ancs-sel', on);
+    });
+  }
+
+  function setHold(v){
+    S.hold = Math.max(2, Math.min(30, v));
+    lsSet('ancsHold', S.hold); mark();
+  }
+  function mark(){
+    var p = document.getElementById('ancsPct');
+    if (p) p.textContent = Math.round(S.scale * 100) + '%';
+    var s = document.getElementById('ancsSec');
+    if (s) s.textContent = S.hold + 's';
+    var q = document.querySelectorAll('#ancsSet button[data-ancs]');
+    Array.prototype.forEach.call(q, function(b){
+      var k = b.dataset.ancs;
+      var on = (k === 'on1' && S.on) || (k === 'on0' && !S.on)
+            || (k === 'f1' && S.full) || (k === 'f0' && !S.full);
+      b.classList.toggle('ancs-sel', on);
+    });
+  }
+
+  // the settings view may not exist yet at load; retry briefly, then watch
+  var tries = 0;
+  var iv = setInterval(function(){
+    injectSettings();
+    if (document.getElementById('ancsSet') || ++tries > 40) clearInterval(iv);
+  }, 250);
+
+  buildCenter();
+  buildStat();
+  tick();
+  setInterval(tick, POLL);
+})();
+</script>
+<!-- ===== end iPhone notification display ==================================== -->
+<!-- ANCS-NOTIFY-END -->
+</body>
+</html>

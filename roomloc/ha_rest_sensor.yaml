@@ -1,0 +1,22 @@
+  - resource: http://192.168.1.29:8093/state
+    scan_interval: 5
+    sensor:
+      - name: "Phone room"
+        unique_id: roomloc_phone_room
+        icon: mdi:cellphone-marker
+        value_template: "{{ value_json.room | default('unknown') }}"
+        json_attributes:
+          - confidence
+          - vector
+          - distances
+          - seconds_in_room
+          - nodes
+      - name: "Phone room confidence"
+        unique_id: roomloc_confidence
+        icon: mdi:signal
+        value_template: "{{ value_json.confidence | default(0) }}"
+    binary_sensor:
+      - name: "Roomloc online"
+        unique_id: roomloc_online
+        device_class: connectivity
+        value_template: "{{ value_json.nodes is defined }}"
